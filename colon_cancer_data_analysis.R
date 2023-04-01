@@ -1,0 +1,2 @@
+# Goal: process the RNAseq read counts data from the late-onset vs. early-onset colon cancer study, and generate figures 1 and 2 from the paper.
+# Optional: Use the data on the GTEX site to generate figures 3 and 4
