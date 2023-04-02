@@ -10,44 +10,65 @@ library(tidyverse)
 
 counts_data <- read_tsv('GSE213092_HRCRC_rowsort.txt')
 counts_data <- as.data.frame(counts_data)
+#Remove NA values from counts data
+counts_data <- counts_data[!rowSums(is.na(counts_data)),]
+
 #rownames(counts_data) <- counts_data[,1]
 
-# Normalize read counts for every gene with the trimmed mean of M-values (TMM) method using the edgeR package in R
-# Convert the counts data into a format that DGEList will accept: convert to matrix
+# Convert the counts data into a format that DGEList will accept: integer matrix
 
 dge_counts <- as.matrix(counts_data)
-
-
-mode(dge_counts[,2]) <-"integer"
+mode(dge_counts) <-"integer"
 #Remove column with NA values (now we don't have a gene name label, must add later)
 dge_counts<-dge_counts[,-1]
-#Remove rows with NAs
-dge_counts <- dge_counts[!rowSums(is.na(dge_counts)),]
 
+# Normalize read counts for every gene with the trimmed mean of M-values (TMM) method,
+# using the edgeR package in R to create a DGEList object.
+#Samples belong to 2 groups: early-onset and late-onset colon cancer
 
-# Normalize read counts, creating DGEList object. [[Note: we have to assign these to the groups early and late colon cancer!]]
 library(edgeR)
-
 sample_labels <- read.csv('sample_labels.csv')
 sample_labels <- sample_labels[!rowSums(is.na(sample_labels)),]
 
 dge <- DGEList(counts=dge_counts, samples = as.data.frame(colnames(dge_counts)), genes = counts_data$Gene, group = sample_labels$disease_state)
 dge <- calcNormFactors(dge, method = "TMM")
 
-
-#Below: steps from assignment 6 for the GLM model DE comparison, to modify for group labelling
+#Create GLM model for differential gene expression comparison
 
 design <- model.matrix(~sample_labels$disease_state) 
-# we are using timeName here to make sure that time is treated as a categorical variable. Had we more time points it might make sense to treat time as a value.
 dge = estimateDisp(dge, design)
-
 fit = glmQLFit(dge, design)
-qlf = glmQLFTest(fit, coef=2) 
-topTags(qlf)
+qlf = glmQLFTest(fit, coef=2)
+topTags(qlf, n=10, adjust.method="BH", sort.by="logFC", p.value=0.01)
 
 # To expand on the work of the authors by introducing an appropriate QC step, we made an MA plot:
 
 plotQLDisp(fit)
 
-#Figure 1 in the study is a heatmap.
+# Calculating FDR values for all the P-values using the same method as topTags
+dge_fdr <- as.data.frame(p.adjust(qlf$table$PValue, method = "BH"))
+colnames(dge_fdr) <- c("FDR")
+
+# Creating a data frame of the DGE data that can be filtered as specified in the paper
+dge_fc <- c(qlf$genes, qlf$table, dge_fdr)
+dge_fc <- data.frame(dge_fc)
+head(dge_fc)
+
+# Filter DGE data based on following criteria: 
+# p < 0.01, |log2FC| >1, logCPM > 1
+dge_fc_filtered <- dge_fc[which(dge_fc$PValue < 0.01),]
+dge_fc_filtered <- dge_fc_filtered[which(dge_fc_filtered$logCPM > 1),]
+dge_fc_filtered <- dge_fc_filtered[which(abs(dge_fc_filtered$logFC) > 1),]
+
+#This narrowed the list of candidate genes from 33119 to 141
+
+# Sort based on fold change values
+dge_fc_filtered <- dge_fc_filtered[order(-dge_fc_filtered$logFC),]
+
+# Generate heatmap (as per Figure 1 in the paper)b using complexheatmap package
+# (Gu, Z. Complex Heatmap Visualization. iMeta 2022.)
+library(ComplexHeatmap)
+
+
+
 
