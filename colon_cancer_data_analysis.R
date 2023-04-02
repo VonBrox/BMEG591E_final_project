@@ -6,41 +6,48 @@
 # Store the RNAseq raw reads file as a dataframe
 library(readr)
 library(dplyr)
+library(tidyverse)
 
-counts_data <- read_tsv('GSE213092_HRCRC.txt')
+counts_data <- read_tsv('GSE213092_HRCRC_rowsort.txt')
 counts_data <- as.data.frame(counts_data)
-
-counts_data <- counts_data %>%
-  column_to_rownames("Gene")
-
-counts_data %>%
-  mutate_all(as.numeric)
+#rownames(counts_data) <- counts_data[,1]
 
 # Normalize read counts for every gene with the trimmed mean of M-values (TMM) method using the edgeR package in R
 # Convert the counts data into a format that DGEList will accept: convert to matrix
 
 dge_counts <- as.matrix(counts_data)
 
-#Will try to see if removing the row names and column names avoids the NA error
-# row.names(dge_counts) <- NULL
-# colnames(dge_counts) <- NULL
 
-#did not work
-which.nonnum <- function(x) {
-  badNum <- is.na(suppressWarnings(as.numeric(as.character(x))))
-  which(badNum & !is.na(x))
-}
-lapply(counts_data, which.nonnum)
-
-#dge_counts <- subset(dge_counts, select = -c(1))
-#colnames(dge_counts)<-NULL
-#dge_counts[] <- lapply(dge_counts, as.numeric)
+mode(dge_counts[,2]) <-"integer"
+#Remove column with NA values (now we don't have a gene name label, must add later)
+dge_counts<-dge_counts[,-1]
+#Remove rows with NAs
+dge_counts <- dge_counts[!rowSums(is.na(dge_counts)),]
 
 
-# Normalize read counts, creating DGEList object
+# Normalize read counts, creating DGEList object. [[Note: we have to assign these to the groups early and late colon cancer!]]
 library(edgeR)
-dge <- DGEList(counts=dge_counts, samples = as.data.frame(colnames(counts_data)), genes = as.data.frame(row.names(counts_data)))
+
+sample_labels <- read.csv('sample_labels.csv')
+sample_labels <- sample_labels[!rowSums(is.na(sample_labels)),]
+
+dge <- DGEList(counts=dge_counts, samples = as.data.frame(colnames(dge_counts)), genes = counts_data$Gene, group = sample_labels$disease_state)
 dge <- calcNormFactors(dge, method = "TMM")
+
+
+#Below: steps from assignment 6 for the GLM model DE comparison, to modify for group labelling
+
+design <- model.matrix(~sample_labels$disease_state) 
+# we are using timeName here to make sure that time is treated as a categorical variable. Had we more time points it might make sense to treat time as a value.
+dge = estimateDisp(dge, design)
+
+fit = glmQLFit(dge, design)
+qlf = glmQLFTest(fit, coef=2) 
+topTags(qlf)
+
+# To expand on the work of the authors by introducing an appropriate QC step, we made an MA plot:
+
+plotQLDisp(fit)
 
 #Figure 1 in the study is a heatmap.
 
