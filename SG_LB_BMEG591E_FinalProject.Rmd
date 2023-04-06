@@ -10,11 +10,11 @@ knitr::opts_chunk$set(echo = TRUE)
 
 Introduction:
 
-  Our analysis is based on the paper published by Ha et al. (2023) entitled: "Reduced expression of alanyl aminopeptidase is a robust biomarker of non-familial adenomatous polyposis and non-hereditary nonpolyposis colorectal cancer syndrome early-onset colorectal cancer" (https://doi.org/10.1002/cam4.5675). The authors have made their sequencing data (fastqs) and read counts file publicly available on the GEO datbase: https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE213092. We chose this analysis because it involved many concepts that we covered in class, but also went beyond these and required learning some new techniques. Cancer biomarker discovery is a research interest of one of the students carrying out this analysis, so this paper is relevant to potential projects they may carry out down the road.
+  Our analysis is based on the paper published by Ha et al. (2023) entitled: "Reduced expression of alanyl aminopeptidase is a robust biomarker of non-familial adenomatous polyposis and non-hereditary nonpolyposis colorectal cancer syndrome early-onset colorectal cancer" (https://doi.org/10.1002/cam4.5675). The authors have made their sequencing data (fastqs) and read counts file publicly available on the GEO datbase: https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE213092. We chose this analysis because it involved many concepts that we covered in class, but also went beyond these and required learning some new techniques. Cancer biomarker discovery is a research interest of Liam's lab, so this paper is relevant to potential projects he may carry out down the road.
   
   This study aimed to identify differential gene expression markers to distinguish early-onset colorectal cancer from late-onset colorectal cancer of the subtypes non-familial adenomatous	polyposis and	non-hereditary nonpolyposis.The group performed RNA-seq of 49 early-onset and 50 late-onset colorectal cancer samples. They analyzed differentially-expressed genes between these groups and filtered them based on log2FC, logCPM, and P-values. They validated the identified differentially-expressed genes using data from TCGA (The Cancer Genome Atlas) database, based on similar expression profiles. Based on this validation, they identified the gene analyl aminopeptidase (ANPEP) as significantly downregulated in early-onset colorectal cancer patients in both their cohort and the TCGA cohort. This association was further supported by methylation data and information from the GTEx and GSE196006 datasets. The study concluded that the gene ANPEP was significantly down-regulated in early-onset colorectal cancer, and could serve as a novel biomarker.
   
-  The scope of our analysis is to carry out the methods described in section 2.2: Bulk RNA sequencing and data analysis, which used the fastq files output from RNAseq to obtain normalized read counts, and used these to produce the heatmap shown in Figure 1A and the volcano plot shown in Figure 2B. These steps were used to identify genes that had significant differential expression between the early-onset and late-onset groups in the 99 patient samples. These steps precede the comparison with TCGA data that ultimately led the authors to single out ANPEP as a novel biomarker. 
+  The scope of our analysis is to carry out the methods described in section 2.2: Bulk RNA sequencing and data analysis. In these steps, the authors used the fastq files output from RNAseq to obtain normalized read counts, and used these to produce the heatmap shown in Figure 1A and the volcano plot shown in Figure 2B. These steps were used to identify genes that had significant differential expression between the early-onset and late-onset groups in the 99 patient samples. These steps precede the comparison with TCGA data that ultimately led the authors to single out ANPEP as a novel biomarker. 
 
 Methods and Results:
 
@@ -68,7 +68,6 @@ sample_labels_subset$EorL <- c(as.numeric(sample_labels_subset$disease_state == 
 library(edgeR)
 dge <- DGEList(counts=dge_counts, samples = as.data.frame(colnames(dge_counts)), genes = rownames(counts_data), group = sample_labels$disease_state)
 dge <- calcNormFactors(dge, method = "TMM")
-#head(dge$samples) # Data frame containing the normalization factors
 dge_counts_normalized <- cpm(dge, log=TRUE) # Data frame of read counts normalized based on CPM and the TMM normalization factors, converted to log2
 dge_counts_normalized_z_scores <- apply(dge_counts_normalized, 2, function(x) (x - mean(x)) / sd(x)) # Calculating Z-score for the counts
 
@@ -106,9 +105,7 @@ paper_dge_fc <- read.csv('cam45675-sup-0001-appendixs1.csv')
 ```
 
 ```{r}
-
-ggplot(data = allDEStatsPairedTime6vs24, aes(x=logCPM, y=logFC)) + geom_point() + geom_hline(yintercept=0, col="red") + stat_smooth()
-
+#Todo: improve the MA plot
 ```
 
 
@@ -143,8 +140,8 @@ library(ComplexHeatmap)
 library(circlize)
 my_colors <- colorRamp2(c(-4, 0, 4), c("green", "black", "red"))
 
-onset_labels = HeatmapAnnotation(bar = c(rep(0, 49), rep(1, 50)),
-                                 col = list(bar = c("1" = "yellow", "0" = "blue")),
+onset_labels = HeatmapAnnotation(onset = sample_labels_subset$EorL,
+                                 col = list(onset = c("1" = "yellow", "0" = "blue")),
                                  gp = gpar(col = "black"), show_legend = FALSE)
 
 heatmap_ourList <- Heatmap(heatmap_data, heatmap_legend_param = list(title = ""), col = my_colors, 
@@ -154,11 +151,27 @@ heatmap_ourList <- Heatmap(heatmap_data, heatmap_legend_param = list(title = "")
 heatmap_ourList
 ```
 
-There are some general similarities between our heatmap and the heatmap shown in the paper. It appears that there are differences in expression between the early- and late-onset cohorts. Both our heatmap and the heatmap in the paper seem to have higher expression levels visible in the top left and bottom right quadrants, and lower expression in the bottom left and top right quadrants. However, there seem to be some genes in our list with high expression across all samples that overwhelm the signal. To determine whether the issue is with the list of genes we used, we made another heatmap using the DEG list from the authors' appendix table 1.
+```{r}
+# Create a data frame for the onset labels
+onset_labels_df <- data.frame(onset = c(rep(0, 49), rep(1, 50)))
+rownames(onset_labels_df) <- sample_labels_subset$X.1
+
+# Create the onset labels annotation object
+onset_labels_anno <- HeatmapAnnotation(
+  onset = onset_labels_df$onset,
+  col = list(onset = c("0" = "blue", "1" = "yellow")),
+  show_legend = TRUE,
+  annotation_width = unit(0.5, "cm")
+)
+```
+
+Note that the "onset" label above the graph is actually incorrect. The first half of the samples are early onset, and the second half are late onset. This can be confirmed by comparing the column names with "sample_labels_subset". The program seems to automatically sort the annotations into 4 groups, and we cannot find out how to change this.
+
+There are some general similarities between our heatmap and the heatmap shown in the paper. It appears that there are differences in expression between the early- and late-onset cohorts. Both our heatmap and the heatmap shown in the paper seem to have higher expression levels visible in the top left and bottom right quadrants, and lower expression in the bottom left and top right quadrants. However, there seem to be some genes in our list with high expression across all samples that overwhelm the signal. To determine whether the issue is with the list of genes we used, we made another heatmap using the DEG list from the authors' appendix table 1.
 
 
 ```{r}
-#Heat map 2, based on authors' DEG list:
+#Second heatmap, based on authors' DEG list:
 #As before, for the heatmap input, we make a matrix of z scores, this time for only the genes in the authors' gene list
 heatmap_authorList_data <- as.data.frame(cbind(rownames(dge_counts_normalized_z_scores), dge_counts_normalized_z_scores))
 colnames(heatmap_authorList_data)[1] <- "Gene"
@@ -179,14 +192,16 @@ my_colors <- colorRamp2(c(-4, 0, 4), c("green", "black", "red"))
 #                                  gp = gpar(col = "black"), show_legend = FALSE, 
 #                                  which = "column")
 
-onset_labels = HeatmapAnnotation(bar = c(rep(0, 49), rep(1, 50)),
-                                 col = list(bar = c("1" = "yellow", "0" = "blue")),
+EorL <- c(rep(0, 49), rep(1, 50))
+onset_labels = HeatmapAnnotation(onset = EorL,
+                                 col = list(onset = c("0" = "yellow", "1" = "blue")),
                                  gp = gpar(col = "black"), show_legend = FALSE)
 
 heatmap_authorList <- Heatmap(heatmap_authorList_data, heatmap_legend_param = list(title = ""), col = my_colors, 
                      show_row_dend = FALSE, show_column_dend = FALSE,
                      row_order = rownames(heatmap_authorList_data), column_order = sample_labels_subset$X.1,
-                     top_annotation = onset_labels)
+                     top_annotation = onset_labels,
+                     cluster_columns = FALSE)
 heatmap_authorList
 ```
 
@@ -256,7 +271,11 @@ These volcano plots display the genes that meet the authors' defined threshold v
 
 Conclusion:
 
-[[comment on pre-processing ]]. A large number of genes matched between our filtered DEG list and the authors' list, and the values obtained for logP, log2FC, and FDR were generally very close. Notably, the 8 most differentially expressed genes we found were not present in the authors' list. Since these genes also have very low FDR values, we conclude that they bear investigation. Our heatmap displayed visible differences between early and late onset colorectal cancer groups, but these differences were less obvious than in the original paper, and we had issues with globally highly expressed genes. Comparison with a heatmap that used the authors' DGE led us to conclude that the differences in our heatmap were more related to the normalization steps than the DGE list. We proposed further steps that could be taken to rectify our normalization steps. Comparison of the three volcano plots that we generated provides good evidence that we properly replicated the authors' methods for producing a DGE list, and further demonstrates that the highly differentially expressed genes on our list that were not in the authors' list warrant further investigation. Overall, we were able to successfully repeat the steps of the authors' analysis using the data they had made publicly available on GEO, and our results were comparable to theirs, though there are some interesting discrepancies that could benefit from further analysis.
+[[comment on pre-processing ]]. A large number of genes matched between our filtered DEG list and the authors' list, and the values obtained for logP, log2FC, and FDR were generally very close. Notably, the 8 most differentially expressed genes we found were not present in the authors' list. Since these genes also have very low FDR values, we conclude that they bear investigation. Our heatmap displayed visible differences between early and late onset colorectal cancer groups, but these differences were less obvious than in the original paper, and we had issues with globally highly expressed genes. Comparison with a heatmap that used the authors' DGE led us to conclude that the differences in our heatmap were more related to the normalization steps than the DGE list. We proposed further steps that could be taken to rectify our normalization. Comparison of the three volcano plots that we generated gave good evidence that we properly replicated the authors' methods for producing a DGE list, and further demonstrates that the highly differentially expressed genes on our list that were not in the authors' list warrant further investigation. Overall, we were able to successfully repeat the steps of the authors' analysis using the data they had made publicly available on GEO, and our results were comparable to theirs, though there are some interesting discrepancies that could benefit from further analysis.
+
+Authors: Liam Brockley (26182865) and Sakshi Goyal (72365547)
+
+Contributions: Liam and Sakshi worked together on the same computer to complete the assignment. Liam typed for the first half and Sakshi typed for the second half.
 
 References:
 
@@ -265,3 +284,4 @@ References:
 2. Gu, Z. Complex Heatmap Visualization. iMeta 2022.
 
 3. Blighe K, Rana S, Lewis M (2022). EnhancedVolcano: Publication-ready volcano plots with enhanced colouring and labeling. R package version 1.16.0, https://github.com/kevinblighe/EnhancedVolcano.
+
