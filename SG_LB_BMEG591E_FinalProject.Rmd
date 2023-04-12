@@ -39,6 +39,7 @@ fastqc -o ./fastQC_output *.fastq.gz
 
 # Aligning: Paired-end alignment of fatsq files with the hg38 reference genome
 
+bowtie2 -x /projects/bmeg/indexes/hg38/hg38_bowtie2_index -1 EarlyOnset_SRR21523117_pass_1.fastq.gz -2 EarlyOnset_SRR21523117_pass_2.fastq.gz -S EarlyOnset_SRR21523117.sam
 
 # Sam to Bam Conversion:
 
