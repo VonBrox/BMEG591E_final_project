@@ -20,9 +20,22 @@ Methods and Results:
 
 Part I: Pre-processing fastqs to obtain read counts
 
-To demonstrate the pre-processing steps for generating a read counts file from fastq files as performed by the authors, we use only 4 fastq files, two from the early-onset group and two from the late-onset group. As there are 99 samples with 2 fastq files each in the whole dataset, the analysis would be too time-consuming if we used all the available files. 
+To demonstrate the pre-processing steps for generating a read counts file from fastq files as performed by the authors, we use only 4 fastq files, two from the early-onset group and two from the late-onset group. As there are 99 samples with 2 fastq files each in the whole dataset, the analysis would be too time-consuming if we used all the available files.
+
+The files are named as follows:
+
+LateOnset_SRR21523090_pass_1.fastq.gz
+LateOnset_SRR21523091_pass_1.fastq.gz
+EarlyOnset_SRR21523117_pass_1.fastq.gz
+EarlyOnset_SRR21523118_pass_1.fastq.gz
+
 
 ```{bash, eval=FALSE}
+
+# QC: Check the quality of reads in the fastq files using fastQC
+
+mkdir fastQC_output  
+fastqc -o ./fastQC_output *.fastq.gz
 
 ```
 
@@ -188,19 +201,24 @@ library(ComplexHeatmap)
 library(circlize)
 my_colors <- colorRamp2(c(-4, 0, 4), c("green", "black", "red"))
 
+
+# We attempted to make column labels, but 
+#
 # onset_labels = HeatmapAnnotation(df = as.data.frame(c(rep(0, 49), rep(1, 50))), 
 #                                  gp = gpar(col = "black"), show_legend = FALSE, 
 #                                  which = "column")
 
-EorL <- c(rep(0, 49), rep(1, 50))
-onset_labels = HeatmapAnnotation(onset = EorL,
-                                 col = list(onset = c("0" = "yellow", "1" = "blue")),
-                                 gp = gpar(col = "black"), show_legend = FALSE)
+
+#
+# EorL <- c(rep(0, 49), rep(1, 50))
+# onset_labels = HeatmapAnnotation(onset = EorL,
+#                                  col = list(onset = c("0" = "yellow", "1" = "blue")),
+#                                  gp = gpar(col = "black"), show_legend = FALSE)
 
 heatmap_authorList <- Heatmap(heatmap_authorList_data, heatmap_legend_param = list(title = ""), col = my_colors, 
                      show_row_dend = FALSE, show_column_dend = FALSE,
                      row_order = rownames(heatmap_authorList_data), column_order = sample_labels_subset$X.1,
-                     top_annotation = onset_labels,
+                     #top_annotation = onset_labels,
                      cluster_columns = FALSE)
 heatmap_authorList
 ```
