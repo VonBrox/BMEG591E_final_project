@@ -25,19 +25,81 @@ To demonstrate the pre-processing steps for generating a read counts file from f
 The files are named as follows:
 
 LateOnset_SRR21523090_pass_1.fastq.gz
+LateOnset_SRR21523090_pass_2.fastq.gz
+
 LateOnset_SRR21523091_pass_1.fastq.gz
+LateOnset_SRR21523091_pass_2.fastq.gz
+
 EarlyOnset_SRR21523117_pass_1.fastq.gz
+EarlyOnset_SRR21523117_pass_2.fastq.gz
+
 EarlyOnset_SRR21523118_pass_1.fastq.gz
+EarlyOnset_SRR21523118_pass_2.fastq.gz
+
+To facilitate the pipeline, we made a task file called sample_names.txt, with the following contents:
+
+LateOnset_SRR21523090
+LateOnset_SRR21523091
+EarlyOnset_SRR21523117
+EarlyOnset_SRR21523118
+
+We used the script runTheseJobsSerially from assignment 2, and tested the pipeline as follows:
+
+```{bash, eval=FALSE}
+## Test the script by running this, with your modified pipeline script in place of fastqToFilteredBam.sh
+
+./runTheseJobsSerially.sh ./fastqToReadCounts.sh sample_names.txt
+
+```
+
+```{bash}
+
+#[[Temporary: testing before incorporporating into pipeline]]
+
+#Trim adapters using cutadapt
+#Possible adapter sequence for TruSeq LT: https://knowledge.illumina.com/library-preparation/general/library-preparation-general-reference_material-list/000001314
+
+sample=LateOnset_SRR21523090
+cutadapt -a AGATCGGAAGAGCACACGTCTGAACTCCAGTCA -o $sample.F.fastq.gz -p $sample.R.fastq.gz $sample"_pass_1.fastq.gz" $sample"_pass_2.fastq.gz"
+
+LateOnset_SRR21523090_pass_1.fastq.gz
+LateOnset_SRR21523090_pass_2.fastq.gz
+
+```
+
 
 
 ```{bash, eval=FALSE}
+
+##Pipeline for fastqToReadCounts
+
+set -e # this makes the whole script exit on any error.
+sample=$1
+logDir=MyLogDirectory # this is where all the files to keep track of progress will go.
+mkdir -p MyLogDirectory # make the directory where log files will go, if it doesn't exist already
+echo running pipeline for $sample
+
+#
+
+# Trim adapters from the fastq files using trimmomatic:
+
+trimmomatic PE $sample"_pass_1.fastq.gz" $sample"_pass_2.fastq.gz" output_forward_paired.fq.gz output_forward_unpaired.fq.gz output_reverse_paired.fq.gz output_reverse_unpaired.fq.gz ILLUMINACLIP:TruSeq3-PE.fa:2:30:10:2:True LEADING:3 TRAILING:3 MINLEN:36
 
 # QC: Check the quality of reads in the fastq files using fastQC
 
 mkdir fastQC_output  
 fastqc -o ./fastQC_output *.fastq.gz
 
+# Align reads to the hg38 reference genome using bowtie2 (the group used HISAT2 but these tools are comparable for RNASeq data)
+
+bowtie2 -x /projects/bmeg/indexes/hg38/hg38_bowtie2_index -1 /projects/bmeg/A1/input_iPSC_SRA66_subset_1.fastq -2 /projects/bmeg/A1/input_iPSC_SRA66_subset_2.fastq -S assignment_1_alignment.sam
+
+
+# Count the aligned reads using featureCounts in the Subread 2.0.3 package.
+
+
 ```
+
 
 Part II: Analysis of read counts data to identify differentially expressed genes (DEG)
 
