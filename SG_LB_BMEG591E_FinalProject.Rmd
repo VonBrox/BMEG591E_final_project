@@ -37,6 +37,14 @@ EarlyOnset_SRR21523118_pass_1.fastq.gz
 mkdir fastQC_output  
 fastqc -o ./fastQC_output *.fastq.gz
 
+# Aligning: Paired-end alignment of fatsq files with the hg38 reference genome
+
+
+# Sam to Bam Conversion:
+
+
+# Counting aligned reads using featureCount (subread package)
+
 ```
 
 Part II: Analysis of read counts data to identify differentially expressed genes (DEG)
