@@ -54,16 +54,37 @@ We used the script runTheseJobsSerially from assignment 2, and tested the pipeli
 
 ```{bash}
 
-#[[Temporary: testing before incorporporating into pipeline]]
-
+#[[Temporary: testing before incorporating into pipeline]]
 #Trim adapters using cutadapt
 #Possible adapter sequence for TruSeq LT: https://knowledge.illumina.com/library-preparation/general/library-preparation-general-reference_material-list/000001314
 
-sample=LateOnset_SRR21523090
+sample=EarlyOnset_SRR21523117
 cutadapt -a AGATCGGAAGAGCACACGTCTGAACTCCAGTCA -o $sample.F.fastq.gz -p $sample.R.fastq.gz $sample"_pass_1.fastq.gz" $sample"_pass_2.fastq.gz"
 
-LateOnset_SRR21523090_pass_1.fastq.gz
-LateOnset_SRR21523090_pass_2.fastq.gz
+#^Above resulted in error, quality index didn't match read length on a line?
+#Since the adapter sequence is unknown, but the paper states that the reads are 100 bp, I will use cutadapt to trim reads down to 100 bp, which should hopefully remove adapter sequences.
+
+sample=EarlyOnset_SRR21523117
+cutadapt --pair-filter=any -l 100 -o $sample.F.fastq.gz -p $sample.R.fastq.gz $sample"_pass_1.fastq.gz" $sample"_pass_2.fastq.gz"
+#Fastqc showed that above did not work for some reason. Moving on
+
+#Could also try  using trimmomatic:
+
+trimmomatic PE $sample"_pass_1.fastq.gz" $sample"_pass_2.fastq.gz" output_forward_paired.fq.gz output_forward_unpaired.fq.gz output_reverse_paired.fq.gz output_reverse_unpaired.fq.gz ILLUMINACLIP:TruSeq3-PE.fa:2:30:10:2:True LEADING:3 TRAILING:3 MINLEN:36
+
+#Performed already :
+# Aligning: Paired-end alignment of fatsq files with the hg38 reference genome
+bowtie2 -x /projects/bmeg/indexes/hg38/hg38_bowtie2_index -1 EarlyOnset_SRR21523117_pass_1.fastq.gz -2 EarlyOnset_SRR21523117_pass_2.fastq.gz -S EarlyOnset_SRR21523117.sam
+# Sam to Bam Conversion:
+samtools view -h -b -o EarlyOnset_SRR21523117.bam EarlyOnset_SRR21523117.sam
+#[W::sam_read1] Parse error at line 10742665
+#[main_samview] truncated file.
+
+
+#Summarize paired-end reads and count fragments (instead of reads):
+featureCounts -p --countReadPairs -t exon -g gene_id -a annotation.gtf -o counts.txt [mapping_results_PE.bam]
+
+
 
 ```
 
@@ -72,32 +93,101 @@ LateOnset_SRR21523090_pass_2.fastq.gz
 ```{bash, eval=FALSE}
 
 ##Pipeline for fastqToReadCounts
-
+#
 set -e # this makes the whole script exit on any error.
 sample=$1
 logDir=MyLogDirectory # this is where all the files to keep track of progress will go.
 mkdir -p MyLogDirectory # make the directory where log files will go, if it doesn't exist already
 echo running pipeline for $sample
-
 #
-
-# Trim adapters from the fastq files using trimmomatic:
-
-trimmomatic PE $sample"_pass_1.fastq.gz" $sample"_pass_2.fastq.gz" output_forward_paired.fq.gz output_forward_unpaired.fq.gz output_reverse_paired.fq.gz output_reverse_unpaired.fq.gz ILLUMINACLIP:TruSeq3-PE.fa:2:30:10:2:True LEADING:3 TRAILING:3 MINLEN:36
-
+# Trim adapters from the fastq files:
+#
 # QC: Check the quality of reads in the fastq files using fastQC
-
-mkdir fastQC_output  
-fastqc -o ./fastQC_output *.fastq.gz
-
-# Align reads to the hg38 reference genome using bowtie2 (the group used HISAT2 but these tools are comparable for RNASeq data)
-
-bowtie2 -x /projects/bmeg/indexes/hg38/hg38_bowtie2_index -1 /projects/bmeg/A1/input_iPSC_SRA66_subset_1.fastq -2 /projects/bmeg/A1/input_iPSC_SRA66_subset_2.fastq -S assignment_1_alignment.sam
-
-
-# Count the aligned reads using featureCounts in the Subread 2.0.3 package.
-
-
+#
+if [ ! -e $logDir/$sample.fastqc.done ] #run this code only if record of fastqc is missing
+then
+        echo Performing fastqc of sample $sample with the following fastqs:
+        ls $sample"_pass_1.fastq.gz" $sample"_pass_2.fastq.gz"
+        fastqc -o . $sample"_pass_1.fastq.gz" $sample"_pass_2.fastq.gz"
+        touch $logDir/$sample.fastqc.done #create record to prevent repeating process on same file
+else # $logDir/$sample.fastqc.done was not missing
+        echo Already performed fastqc of $sample
+fi
+#
+# Trim adapters using cutadapt:
+#
+if [ ! -e $logDir/$sample.alignment.done ] #run this code only if record of alignment is missing
+then
+        echo Performing bowtie2 alignment of sample $sample with the following fastqs:
+        ls $sample"_pass_1.fastq.gz" $sample"_pass_2.fastq.gz"
+        bowtie2 -x /projects/bmeg/indexes/hg38/hg38_bowtie2_index -1 $sample"_pass_1.fastq.gz" -2 $sample"_pass_2.fastq.gz" -S $sample.alignment.sam
+        touch $logDir/$sample.alignment.done #create record to prevent repeating process on same file
+else # $logDir record was not missing
+        echo Already performed bowtie2 alignment of $sample
+fi
+cutadapt --pair-filter=any -l 100 -o $sample.F.fastq.gz -p $sample.R.fastq.gz $sample"_pass_1.fastq.gz" $sample"_pass_2.fastq.gz"
+#
+# Align reads to the hg38 reference genome using bowtie2 (the group used HISAT2 but these tools are comparable for RNASeq data):
+#
+if [ ! -e $logDir/$sample.alignment.done ] #run this code only if record of alignment is missing
+then
+        echo Performing bowtie2 alignment of sample $sample with the following fastqs:
+        ls $sample"_pass_1.fastq.gz" $sample"_pass_2.fastq.gz"
+        bowtie2 -x /projects/bmeg/indexes/hg38/hg38_bowtie2_index -1 $sample"_pass_1.fastq.gz" -2 $sample"_pass_2.fastq.gz" -S $sample.alignment.sam
+        touch $logDir/$sample.alignment.done #create record to prevent repeating process on same file
+else # $logDir record was not missing
+        echo Already performed bowtie2 alignment of $sample
+fi
+#
+#Convert SAM files to BAM files using samtools view:
+#
+if [ ! -e $logDir/$sample.sam_to_bam.done ] #run this code only if record of conversion is missing
+then
+        echo Performing conversion of sample $sample from .sam to .bam with the following .sam file:
+        ls $sample.alignment.sam
+        samtools view -h -b -o $sample.alignment.bam $sample.alignment.sam
+        touch $logDir/$sample.sam_to_bam.done #create record to prevent repeating process on same file
+else # $logDir record was not missing
+        echo Already performed conversion of .sam to .bam for $sample
+fi
+#
+# Use sambamba to sort the .bam file
+#
+if [ ! -e $logDir/$sample.sambamba_sort.done ] #run this code only if record is missing
+then
+        echo Sorting $sample .bam file for the following:
+        ls $sample.alignment.bam
+        sambamba sort $sample.alignment.bam
+        touch $logDir/$sample.sambamba_sort.done #create record to prevent repeating process on same file
+else # $logDir record was not missing
+        echo Already performed sambamba sort for $sample
+fi
+#
+#Use sambamba to keep only uniquely mapped reads
+#
+if [ ! -e $logDir/$sample.sambamba_unique_reads_filter.done ] #run this code only if record is missing
+then
+        echo Filtering for unique reads in $sample in the following file:
+        ls $sample.alignment.sorted.bam
+        sambamba view -F "[XS] == null and not unmapped and not duplicate" -h -f bam -o $sample.alignment.sorted.filtered.bam $sample.alignment.sorted.bam 
+        touch $logDir/$sample.sambamba_unique_reads_filter.done #create record to prevent repeating process on same file
+else # $logDir record was not missing
+        echo Already filtered unique reads for $sample
+fi
+#
+# Count the aligned reads using featureCounts in the Subread 2.0.3 package:
+#
+if [ ! -e $logDir/$sample.featureCounts.done ] #run this code only if record is missing
+then
+        echo Counting features in $sample in the following file:
+        ls $sample.alignment.sorted.filtered.bam 
+        featureCounts -p --countReadPairs -t exon -g gene_id -o counts.txt $sample.alignment.sorted.filtered.bam        
+        touch $logDir/$sample.featureCounts.done #create record to prevent repeating process on same file
+else # $logDir record was not missing
+        echo Already counted features for $sample
+fi
+#
+echo finished pipeline for $sample
 ```
 
 
@@ -293,6 +383,7 @@ Possible further approaches to replicate the paper's results might include:
    - Calculating the z scores before calculating cpm, or only calculating z scores without cpm.
    - Removing high-signal genes and re-scaling (say, removing the top 6 genes with the highest sum of values across rows).
    - Performing one or more of the normalization steps (TMM, cpm, and/or z-scores) after filtering the genes.
+   - Filtering based on false discovery rate (FDR) instead of P-value and logFC.
    - Contacting the authors to inquire about their normalization steps
 
 In the interest of time, we will not experiment with altering the order of these steps, but the above would be a worthwhile approach.
