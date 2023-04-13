@@ -121,9 +121,9 @@ GEO datbase:
 \url{https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE213092}. We
 chose this analysis because it involved many concepts that we covered in
 class, but also went beyond these and required learning some new
-techniques. Cancer biomarker discovery is a research interest of one of
-the students carrying out this analysis, so this paper is relevant to
-potential projects they may carry out down the road.
+techniques. Cancer biomarker discovery is a research interest of Liam's
+lab, so this paper is relevant to potential projects he may carry out
+down the road.
 
 This study aimed to identify differential gene expression markers to
 distinguish early-onset colorectal cancer from late-onset colorectal
@@ -143,14 +143,14 @@ significantly down-regulated in early-onset colorectal cancer, and could
 serve as a novel biomarker.
 
 The scope of our analysis is to carry out the methods described in
-section 2.2: Bulk RNA sequencing and data analysis, which used the fastq
-files output from RNAseq to obtain normalized read counts, and used
-these to produce the heatmap shown in Figure 1A and the volcano plot
-shown in Figure 2B. These steps were used to identify genes that had
-significant differential expression between the early-onset and
-late-onset groups in the 99 patient samples. These steps precede the
-comparison with TCGA data that ultimately led the authors to single out
-ANPEP as a novel biomarker.
+section 2.2: Bulk RNA sequencing and data analysis. In these steps, the
+authors used the fastq files output from RNAseq to obtain normalized
+read counts, and used these to produce the heatmap shown in Figure 1A
+and the volcano plot shown in Figure 2B. These steps were used to
+identify genes that had significant differential expression between the
+early-onset and late-onset groups in the 99 patient samples. These steps
+precede the comparison with TCGA data that ultimately led the authors to
+single out ANPEP as a novel biomarker.
 
 Methods and Results:
 
@@ -163,9 +163,288 @@ As there are 99 samples with 2 fastq files each in the whole dataset,
 the analysis would be too time-consuming if we used all the available
 files.
 
+The files are named as follows:
+
+LateOnset\_SRR21523090\_pass\_1.fastq.gz
+LateOnset\_SRR21523090\_pass\_2.fastq.gz
+
+LateOnset\_SRR21523091\_pass\_1.fastq.gz
+LateOnset\_SRR21523091\_pass\_2.fastq.gz
+
+EarlyOnset\_SRR21523117\_pass\_1.fastq.gz
+EarlyOnset\_SRR21523117\_pass\_2.fastq.gz
+
+EarlyOnset\_SRR21523118\_pass\_1.fastq.gz
+EarlyOnset\_SRR21523118\_pass\_2.fastq.gz
+
+To facilitate the pipeline, we made a task file called
+sample\_names.txt, with the following contents:
+
+LateOnset\_SRR21523090 LateOnset\_SRR21523091 EarlyOnset\_SRR21523117
+EarlyOnset\_SRR21523118
+
+In the following script, we tried to carry out all pre-processing steps
+only for the sample EarlyOnset\_SRR21523117. We then incorporated all of
+these steps into a pipeline that could be used to process any number of
+samples.
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\tightlist
+\item
+  Check quality of raw fastqs using fastqc
+\end{enumerate}
+
 \begin{Shaded}
 \begin{Highlighting}[]
 
+\VariableTok{sample}\OperatorTok{=}\NormalTok{EarlyOnset\_SRR21523117}
+\ExtensionTok{fastqc} \AttributeTok{{-}o}\NormalTok{ ./fastQC\_output }\VariableTok{$sample}\StringTok{"\_pass\_1.fastq.gz"} \VariableTok{$sample}\StringTok{"\_\_pass\_2.fastq.gz"}
+\end{Highlighting}
+\end{Shaded}
+
+As shown below, the fastq file failed the per base sequence content and
+adapter content quality metrics. This showed that we needed to trim
+adapters and indexes.
+
+\begin{figure}
+\centering
+\includegraphics{./EarlyOnset_SRR21523117_pass_1_fastqc_basecontent.png}
+\caption{sequence content}
+\end{figure}
+
+\includegraphics{./EarlyOnset_SRR21523117_pass_1_fastqc_adaptercontent.png}
+2. Trim adapters using cutadapt
+
+This study used the TruSeq Stranded mRNA LT Sample Prep Kit to prepare
+samples.
+
+According to the Illumina Adapter Sequences manual (Document \#
+1000000002694 v17 pg. 48):
+\url{https://support.illumina.com/downloads/illumina-adapter-sequences-document-1000000002694.html}
+
+The sequence that can be used for TruSeq universal adapter trimming is:
+
+AATGATACGGCGACCACCGAGATCTACACTCTTTCCCTACACGACGCTCTTCCGATCT
+
+The authors were not especially clear about the adapter sequences they
+used, but fastqc detected universal adapter sequences in this sample, so
+we will assume they used this sequence and use cutadapt to trim it.
+
+\begin{Shaded}
+\begin{Highlighting}[]
+
+\CommentTok{\# Trim adapters using cutadapt}
+
+\VariableTok{sample}\OperatorTok{=}\NormalTok{EarlyOnset\_SRR21523117}
+
+\ExtensionTok{cutadapt} \AttributeTok{{-}{-}cut}\NormalTok{ 10 }\AttributeTok{{-}a}\NormalTok{ AATGATACGGCGACCACCGAGATCTACACTCTTTCCCTACACGACGCTCTTCCGATCT }\AttributeTok{{-}o} \VariableTok{$sample}\NormalTok{.trimmed.\_pass\_1.fastq.gz }\VariableTok{$sample}\StringTok{"\_pass\_1.fastq.gz"}
+
+\ExtensionTok{cutadapt} \AttributeTok{{-}{-}cut}\NormalTok{ 10 }\AttributeTok{{-}a}\NormalTok{ AATGATACGGCGACCACCGAGATCTACACTCTTTCCCTACACGACGCTCTTCCGATCT }\AttributeTok{{-}o} \VariableTok{$sample}\NormalTok{.trimmed.\_pass\_2.fastq.gz }\VariableTok{$sample}\StringTok{"\_pass\_2.fastq.gz"}
+
+\CommentTok{\#Check the resulting fastq files for improvement in base quality}
+
+\ExtensionTok{fastqc} \AttributeTok{{-}o}\NormalTok{ ./fastQC\_output }\VariableTok{$sample}\NormalTok{.trimmed.\_pass\_1.fastq.gz }\VariableTok{$sample}\NormalTok{.trimmed.\_pass\_2.fastq.gz}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{figure}
+\centering
+\includegraphics{./EarlyOnset_SRR21523117_pass_1_fastqc_basecontent_trimmed.png}
+\caption{adapter content}
+\end{figure}
+
+Trimming improved the per base sequence content quality metric by
+removing the first 10 bases from the reads in the fastqs (shown above),
+but the adapter content did not change, which means that a different
+adapter sequence was used. Since we do not know what this sequence was,
+we will move on and use the resulting trimmed fastqs for subsequent
+steps.
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\setcounter{enumi}{2}
+\tightlist
+\item
+  Align fastqs to hg38 reference genome using bowtie2 and convert to BAM
+  file
+\end{enumerate}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+
+\CommentTok{\# Paired{-}end alignment of trimmed fatsq files with the hg38 reference genome}
+
+\VariableTok{sample}\OperatorTok{=}\NormalTok{EarlyOnset\_SRR21523117}
+
+\ExtensionTok{bowtie2} \AttributeTok{{-}x}\NormalTok{ /projects/bmeg/indexes/hg38/hg38\_bowtie2\_index }\AttributeTok{{-}1} \VariableTok{$sample}\NormalTok{.trimmed.\_pass\_1.fastq.gz }\AttributeTok{{-}2} \VariableTok{$sample}\NormalTok{.trimmed.\_pass\_2.fastq.gz }\AttributeTok{{-}S} \VariableTok{$sample}\NormalTok{.aligned.sam}
+
+\CommentTok{\# Sam to Bam conversion using samtools:}
+
+\ExtensionTok{samtools}\NormalTok{ view }\AttributeTok{{-}h} \AttributeTok{{-}b} \AttributeTok{{-}o} \VariableTok{$sample}\NormalTok{.aligned.bam }\VariableTok{$sample}\NormalTok{.aligned.sam}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\setcounter{enumi}{3}
+\tightlist
+\item
+  Produce a counts file using featurecounts
+\end{enumerate}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\CommentTok{\#Download and unpack the subreads package}
+\FunctionTok{wget} \AttributeTok{{-}{-}no{-}check{-}certificate}\NormalTok{ https://sourceforge.net/projects/subread/files/subread{-}2.0.4/subread{-}2.0.4{-}Linux{-}x86\_64.tar.gz}
+\FunctionTok{tar}\NormalTok{ zxvf subread{-}2.0.4{-}Linux{-}x86\_64.tar.gz}
+
+\CommentTok{\#Add the bin folder to the $PATH so we can use featureCounts}
+\BuiltInTok{export} \VariableTok{PATH}\OperatorTok{=}\NormalTok{/home/lbrockley\_bmeg23/subread{-}2.0.4{-}Linux{-}x86\_64/bin:}\VariableTok{$PATH}
+
+\CommentTok{\#Copy the hg38 annotation file in the subreads folder to the final project file to use for annotation with featurecounts}
+\FunctionTok{cp}\NormalTok{ hg38\_RefSeq\_exon.txt /home/lbrockley\_bmeg23/final\_project/}
+\CommentTok{\#Convert to the preferred file extension (saf)}
+\FunctionTok{cp}\NormalTok{ hg38\_RefSeq\_exon.txt hg38\_RefSeq\_exon.saf}
+
+\CommentTok{\#Summarize and count paired{-}end reads:}
+\VariableTok{sample}\OperatorTok{=}\NormalTok{EarlyOnset\_SRR21523117}
+\ExtensionTok{featureCounts} \AttributeTok{{-}p} \AttributeTok{{-}{-}countReadPairs} \AttributeTok{{-}t}\NormalTok{ exon }\AttributeTok{{-}g}\NormalTok{ gene\_id }\AttributeTok{{-}F} \StringTok{\textquotesingle{}SAF\textquotesingle{}} \AttributeTok{{-}a}\NormalTok{ hg38\_RefSeq\_exon.saf }\AttributeTok{{-}o} \VariableTok{$sample}\NormalTok{.counts.txt }\VariableTok{$sample}\NormalTok{.aligned.bam}
+\end{Highlighting}
+\end{Shaded}
+
+The output of this script was a read counts file with 28397 rows:
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{EarlyOnset\_SRR21523117\_counts }\OtherTok{\textless{}{-}} \FunctionTok{read.csv}\NormalTok{(}\StringTok{\textquotesingle{}EarlyOnset\_SRR21523117.counts.csv\textquotesingle{}}\NormalTok{)}
+\FunctionTok{head}\NormalTok{(EarlyOnset\_SRR21523117\_counts)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+##      Geneid                                                    Chr
+## 1 100287102                                         chr1;chr1;chr1
+## 2    653635 chr1;chr1;chr1;chr1;chr1;chr1;chr1;chr1;chr1;chr1;chr1
+## 3 102466751                                                   chr1
+## 4 100302278                                                   chr1
+## 5    645520                                         chr1;chr1;chr1
+## 6     79501                                                   chr1
+##                                                               Start
+## 1                                                 11874;12613;13221
+## 2 14362;14970;15796;16607;16858;17233;17606;17915;18268;24738;29321
+## 3                                                             17369
+## 4                                                             30366
+## 5                                                 34611;35277;35721
+## 6                                                             69091
+##                                                                 End
+## 1                                                 12227;12721;14409
+## 2 14829;15038;15947;16765;17055;17368;17742;18061;18366;24891;29370
+## 3                                                             17436
+## 4                                                             30503
+## 5                                                 35174;35481;36081
+## 6                                                             70008
+##                  Strand Length EarlyOnset_SRR21523117.aligned.bam
+## 1                 +;+;+   1652                                  0
+## 2 -;-;-;-;-;-;-;-;-;-;-   1769                                391
+## 3                     -     68                                 13
+## 4                     +    138                                  0
+## 5                 -;-;-   1130                                  0
+## 6                     +    918                                  0
+\end{verbatim}
+
+The featureCounts program stated that a total of 56732052 alignments
+occurred, and 21202936 (37.4\%) of alignments were successfully
+assigned.
+
+Once we had verified these steps for one sample, we incorporated them
+into a pipeline. We used the script runTheseJobsSerially from assignment
+2, and tested the pipeline as follows:
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\CommentTok{\#\# Test the script by running this, with your modified pipeline script in place of fastqToFilteredBam.sh}
+
+\ExtensionTok{./runTheseJobsSerially.sh}\NormalTok{ ./fastqToReadCounts.sh sample\_names.txt}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+
+\CommentTok{\#\#Pipeline for fastqToReadCounts}
+\CommentTok{\#}
+\BuiltInTok{set} \AttributeTok{{-}e} \CommentTok{\# this makes the whole script exit on any error.}
+\VariableTok{sample}\OperatorTok{=}\VariableTok{$1}
+\VariableTok{logDir}\OperatorTok{=}\NormalTok{MyLogDirectory }\CommentTok{\# this is where all the files to keep track of progress will go.}
+\FunctionTok{mkdir} \AttributeTok{{-}p}\NormalTok{ MyLogDirectory }\CommentTok{\# make the directory where log files will go, if it doesn\textquotesingle{}t exist already}
+\BuiltInTok{echo}\NormalTok{ running pipeline for }\VariableTok{$sample}
+\CommentTok{\#}
+\CommentTok{\# Trim adapters from the fastq files:}
+\CommentTok{\#}
+\CommentTok{\# QC: Check the quality of reads in the fastq files using fastQC}
+\CommentTok{\#}
+\ControlFlowTok{if} \BuiltInTok{[} \OtherTok{!} \OtherTok{{-}e} \VariableTok{$logDir}\NormalTok{/}\VariableTok{$sample}\NormalTok{.fastqc.done }\BuiltInTok{]} \CommentTok{\#run this code only if record of fastqc is missing}
+\ControlFlowTok{then}
+        \BuiltInTok{echo}\NormalTok{ Performing fastqc of sample }\VariableTok{$sample}\NormalTok{ with the following fastqs:}
+        \FunctionTok{ls} \VariableTok{$sample}\StringTok{"\_pass\_1.fastq.gz"} \VariableTok{$sample}\StringTok{"\_pass\_2.fastq.gz"}
+        \ExtensionTok{fastqc} \AttributeTok{{-}o}\NormalTok{ ./fastQC\_output }\VariableTok{$sample}\StringTok{"\_pass\_1.fastq.gz"} \VariableTok{$sample}\StringTok{"\_pass\_2.fastq.gz"}
+        \FunctionTok{touch} \VariableTok{$logDir}\NormalTok{/}\VariableTok{$sample}\NormalTok{.fastqc.done }\CommentTok{\#create record to prevent repeating process on same file}
+\ControlFlowTok{else} \CommentTok{\# $logDir/$sample.fastqc.done was not missing}
+        \BuiltInTok{echo}\NormalTok{ Already performed fastqc of }\VariableTok{$sample}
+\ControlFlowTok{fi}
+\CommentTok{\#}
+\CommentTok{\# Trim adapters using cutadapt:}
+\CommentTok{\#}
+\ControlFlowTok{if} \BuiltInTok{[} \OtherTok{!} \OtherTok{{-}e} \VariableTok{$logDir}\NormalTok{/}\VariableTok{$sample}\NormalTok{.alignment.done }\BuiltInTok{]} \CommentTok{\#run this code only if record of alignment is missing}
+\ControlFlowTok{then}
+        \BuiltInTok{echo}\NormalTok{ Performing bowtie2 alignment of sample }\VariableTok{$sample}\NormalTok{ with the following fastqs:}
+        \FunctionTok{ls} \VariableTok{$sample}\StringTok{"\_pass\_1.fastq.gz"} \VariableTok{$sample}\StringTok{"\_pass\_2.fastq.gz"}
+        \ExtensionTok{bowtie2} \AttributeTok{{-}x}\NormalTok{ /projects/bmeg/indexes/hg38/hg38\_bowtie2\_index }\AttributeTok{{-}1} \VariableTok{$sample}\StringTok{"\_pass\_1.fastq.gz"} \AttributeTok{{-}2} \VariableTok{$sample}\StringTok{"\_pass\_2.fastq.gz"} \AttributeTok{{-}S} \VariableTok{$sample}\NormalTok{.alignment.sam}
+        \FunctionTok{touch} \VariableTok{$logDir}\NormalTok{/}\VariableTok{$sample}\NormalTok{.alignment.done }\CommentTok{\#create record to prevent repeating process on same file}
+\ControlFlowTok{else} \CommentTok{\# $logDir record was not missing}
+        \BuiltInTok{echo}\NormalTok{ Already performed bowtie2 alignment of }\VariableTok{$sample}
+\ControlFlowTok{fi}
+\ExtensionTok{cutadapt} \AttributeTok{{-}{-}pair{-}filter}\OperatorTok{=}\NormalTok{any }\AttributeTok{{-}l}\NormalTok{ 100 }\AttributeTok{{-}o} \VariableTok{$sample}\NormalTok{.F.fastq.gz }\AttributeTok{{-}p} \VariableTok{$sample}\NormalTok{.R.fastq.gz }\VariableTok{$sample}\StringTok{"\_pass\_1.fastq.gz"} \VariableTok{$sample}\StringTok{"\_pass\_2.fastq.gz"}
+\CommentTok{\#}
+\CommentTok{\# Align reads to the hg38 reference genome using bowtie2 (the group used HISAT2 but these tools are comparable for RNASeq data):}
+\CommentTok{\#}
+\ControlFlowTok{if} \BuiltInTok{[} \OtherTok{!} \OtherTok{{-}e} \VariableTok{$logDir}\NormalTok{/}\VariableTok{$sample}\NormalTok{.alignment.done }\BuiltInTok{]} \CommentTok{\#run this code only if record of alignment is missing}
+\ControlFlowTok{then}
+        \BuiltInTok{echo}\NormalTok{ Performing bowtie2 alignment of sample }\VariableTok{$sample}\NormalTok{ with the following fastqs:}
+        \FunctionTok{ls} \VariableTok{$sample}\StringTok{"\_pass\_1.fastq.gz"} \VariableTok{$sample}\StringTok{"\_pass\_2.fastq.gz"}
+        \ExtensionTok{bowtie2} \AttributeTok{{-}x}\NormalTok{ /projects/bmeg/indexes/hg38/hg38\_bowtie2\_index }\AttributeTok{{-}1} \VariableTok{$sample}\StringTok{"\_pass\_1.fastq.gz"} \AttributeTok{{-}2} \VariableTok{$sample}\StringTok{"\_pass\_2.fastq.gz"} \AttributeTok{{-}S} \VariableTok{$sample}\NormalTok{.alignment.sam}
+        \FunctionTok{touch} \VariableTok{$logDir}\NormalTok{/}\VariableTok{$sample}\NormalTok{.alignment.done }\CommentTok{\#create record to prevent repeating process on same file}
+\ControlFlowTok{else} \CommentTok{\# $logDir record was not missing}
+        \BuiltInTok{echo}\NormalTok{ Already performed bowtie2 alignment of }\VariableTok{$sample}
+\ControlFlowTok{fi}
+\CommentTok{\#}
+\CommentTok{\#Convert SAM files to BAM files using samtools view:}
+\CommentTok{\#}
+\ControlFlowTok{if} \BuiltInTok{[} \OtherTok{!} \OtherTok{{-}e} \VariableTok{$logDir}\NormalTok{/}\VariableTok{$sample}\NormalTok{.sam\_to\_bam.done }\BuiltInTok{]} \CommentTok{\#run this code only if record of conversion is missing}
+\ControlFlowTok{then}
+        \BuiltInTok{echo}\NormalTok{ Performing conversion of sample }\VariableTok{$sample}\NormalTok{ from .sam to .bam with the following .sam file:}
+        \FunctionTok{ls} \VariableTok{$sample}\NormalTok{.alignment.sam}
+        \ExtensionTok{samtools}\NormalTok{ view }\AttributeTok{{-}h} \AttributeTok{{-}b} \AttributeTok{{-}o} \VariableTok{$sample}\NormalTok{.alignment.bam }\VariableTok{$sample}\NormalTok{.alignment.sam}
+        \FunctionTok{rm} \VariableTok{$sample}\NormalTok{.alignment.sam }\CommentTok{\#Remove the unnecessary sam file}
+        \FunctionTok{touch} \VariableTok{$logDir}\NormalTok{/}\VariableTok{$sample}\NormalTok{.sam\_to\_bam.done }\CommentTok{\#create record to prevent repeating process on same file}
+\ControlFlowTok{else} \CommentTok{\# $logDir record was not missing}
+        \BuiltInTok{echo}\NormalTok{ Already performed conversion of .sam to .bam for }\VariableTok{$sample}
+\ControlFlowTok{fi}
+\CommentTok{\#}
+\CommentTok{\# Count the aligned reads using featureCounts in the Subread 2.0.3 package:}
+\CommentTok{\#}
+\ControlFlowTok{if} \BuiltInTok{[} \OtherTok{!} \OtherTok{{-}e} \VariableTok{$logDir}\NormalTok{/}\VariableTok{$sample}\NormalTok{.featureCounts.done }\BuiltInTok{]} \CommentTok{\#run this code only if record is missing}
+\ControlFlowTok{then}
+        \BuiltInTok{echo}\NormalTok{ Counting features in }\VariableTok{$sample}\NormalTok{ in the following file:}
+        \FunctionTok{ls} \VariableTok{$sample}\NormalTok{.alignment.sorted.filtered.bam }
+        \ExtensionTok{featureCounts} \AttributeTok{{-}p} \AttributeTok{{-}{-}countReadPairs} \AttributeTok{{-}t}\NormalTok{ exon }\AttributeTok{{-}g}\NormalTok{ gene\_id }\AttributeTok{{-}o}\NormalTok{ counts.txt }\VariableTok{$sample}\NormalTok{.alignment.sorted.filtered.bam        }
+        \FunctionTok{touch} \VariableTok{$logDir}\NormalTok{/}\VariableTok{$sample}\NormalTok{.featureCounts.done }\CommentTok{\#create record to prevent repeating process on same file}
+\ControlFlowTok{else} \CommentTok{\# $logDir record was not missing}
+        \BuiltInTok{echo}\NormalTok{ Already counted features for }\VariableTok{$sample}
+\ControlFlowTok{fi}
+\CommentTok{\#}
+\BuiltInTok{echo}\NormalTok{ finished pipeline for }\VariableTok{$sample}
 \end{Highlighting}
 \end{Shaded}
 
@@ -283,7 +562,6 @@ Part II A: Generating a normalized DEG list from the read counts file
 \begin{Highlighting}[]
 \NormalTok{dge }\OtherTok{\textless{}{-}} \FunctionTok{DGEList}\NormalTok{(}\AttributeTok{counts=}\NormalTok{dge\_counts, }\AttributeTok{samples =} \FunctionTok{as.data.frame}\NormalTok{(}\FunctionTok{colnames}\NormalTok{(dge\_counts)), }\AttributeTok{genes =} \FunctionTok{rownames}\NormalTok{(counts\_data), }\AttributeTok{group =}\NormalTok{ sample\_labels}\SpecialCharTok{$}\NormalTok{disease\_state)}
 \NormalTok{dge }\OtherTok{\textless{}{-}} \FunctionTok{calcNormFactors}\NormalTok{(dge, }\AttributeTok{method =} \StringTok{"TMM"}\NormalTok{)}
-\CommentTok{\#head(dge$samples) \# Data frame containing the normalization factors}
 \NormalTok{dge\_counts\_normalized }\OtherTok{\textless{}{-}} \FunctionTok{cpm}\NormalTok{(dge, }\AttributeTok{log=}\ConstantTok{TRUE}\NormalTok{) }\CommentTok{\# Data frame of read counts normalized based on CPM and the TMM normalization factors, converted to log2}
 \NormalTok{dge\_counts\_normalized\_z\_scores }\OtherTok{\textless{}{-}} \FunctionTok{apply}\NormalTok{(dge\_counts\_normalized, }\DecValTok{2}\NormalTok{, }\ControlFlowTok{function}\NormalTok{(x) (x }\SpecialCharTok{{-}} \FunctionTok{mean}\NormalTok{(x)) }\SpecialCharTok{/} \FunctionTok{sd}\NormalTok{(x)) }\CommentTok{\# Calculating Z{-}score for the counts}
 
@@ -329,7 +607,7 @@ Part II A: Generating a normalized DEG list from the read counts file
 \end{Highlighting}
 \end{Shaded}
 
-\includegraphics{SG_LB_BMEG591E_FinalProject_files/figure-latex/unnamed-chunk-2-1.pdf}
+\includegraphics{SG_LB_BMEG591E_FinalProject_files/figure-latex/unnamed-chunk-8-1.pdf}
 
 \begin{Shaded}
 \begin{Highlighting}[]
@@ -734,8 +1012,8 @@ Part II B: Generating a heatmap of differentially expressed genes.
 \begin{Highlighting}[]
 \NormalTok{my\_colors }\OtherTok{\textless{}{-}} \FunctionTok{colorRamp2}\NormalTok{(}\FunctionTok{c}\NormalTok{(}\SpecialCharTok{{-}}\DecValTok{4}\NormalTok{, }\DecValTok{0}\NormalTok{, }\DecValTok{4}\NormalTok{), }\FunctionTok{c}\NormalTok{(}\StringTok{"green"}\NormalTok{, }\StringTok{"black"}\NormalTok{, }\StringTok{"red"}\NormalTok{))}
 
-\NormalTok{onset\_labels }\OtherTok{=} \FunctionTok{HeatmapAnnotation}\NormalTok{(}\AttributeTok{bar =} \FunctionTok{c}\NormalTok{(}\FunctionTok{rep}\NormalTok{(}\DecValTok{0}\NormalTok{, }\DecValTok{49}\NormalTok{), }\FunctionTok{rep}\NormalTok{(}\DecValTok{1}\NormalTok{, }\DecValTok{50}\NormalTok{)),}
-                                 \AttributeTok{col =} \FunctionTok{list}\NormalTok{(}\AttributeTok{bar =} \FunctionTok{c}\NormalTok{(}\StringTok{"1"} \OtherTok{=} \StringTok{"yellow"}\NormalTok{, }\StringTok{"0"} \OtherTok{=} \StringTok{"blue"}\NormalTok{)),}
+\NormalTok{onset\_labels }\OtherTok{=} \FunctionTok{HeatmapAnnotation}\NormalTok{(}\AttributeTok{onset =}\NormalTok{ sample\_labels\_subset}\SpecialCharTok{$}\NormalTok{EorL,}
+                                 \AttributeTok{col =} \FunctionTok{list}\NormalTok{(}\AttributeTok{onset =} \FunctionTok{c}\NormalTok{(}\StringTok{"1"} \OtherTok{=} \StringTok{"yellow"}\NormalTok{, }\StringTok{"0"} \OtherTok{=} \StringTok{"blue"}\NormalTok{)),}
                                  \AttributeTok{gp =} \FunctionTok{gpar}\NormalTok{(}\AttributeTok{col =} \StringTok{"black"}\NormalTok{), }\AttributeTok{show\_legend =} \ConstantTok{FALSE}\NormalTok{)}
 
 \NormalTok{heatmap\_ourList }\OtherTok{\textless{}{-}} \FunctionTok{Heatmap}\NormalTok{(heatmap\_data, }\AttributeTok{heatmap\_legend\_param =} \FunctionTok{list}\NormalTok{(}\AttributeTok{title =} \StringTok{""}\NormalTok{), }\AttributeTok{col =}\NormalTok{ my\_colors, }
@@ -746,13 +1024,35 @@ Part II B: Generating a heatmap of differentially expressed genes.
 \end{Highlighting}
 \end{Shaded}
 
-\includegraphics{SG_LB_BMEG591E_FinalProject_files/figure-latex/unnamed-chunk-6-1.pdf}
+\includegraphics{SG_LB_BMEG591E_FinalProject_files/figure-latex/unnamed-chunk-12-1.pdf}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\CommentTok{\# Create a data frame for the onset labels}
+\NormalTok{onset\_labels\_df }\OtherTok{\textless{}{-}} \FunctionTok{data.frame}\NormalTok{(}\AttributeTok{onset =} \FunctionTok{c}\NormalTok{(}\FunctionTok{rep}\NormalTok{(}\DecValTok{0}\NormalTok{, }\DecValTok{49}\NormalTok{), }\FunctionTok{rep}\NormalTok{(}\DecValTok{1}\NormalTok{, }\DecValTok{50}\NormalTok{)))}
+\FunctionTok{rownames}\NormalTok{(onset\_labels\_df) }\OtherTok{\textless{}{-}}\NormalTok{ sample\_labels\_subset}\SpecialCharTok{$}\NormalTok{X}\FloatTok{.1}
+
+\CommentTok{\# Create the onset labels annotation object}
+\NormalTok{onset\_labels\_anno }\OtherTok{\textless{}{-}} \FunctionTok{HeatmapAnnotation}\NormalTok{(}
+  \AttributeTok{onset =}\NormalTok{ onset\_labels\_df}\SpecialCharTok{$}\NormalTok{onset,}
+  \AttributeTok{col =} \FunctionTok{list}\NormalTok{(}\AttributeTok{onset =} \FunctionTok{c}\NormalTok{(}\StringTok{"0"} \OtherTok{=} \StringTok{"blue"}\NormalTok{, }\StringTok{"1"} \OtherTok{=} \StringTok{"yellow"}\NormalTok{)),}
+  \AttributeTok{show\_legend =} \ConstantTok{TRUE}\NormalTok{,}
+  \AttributeTok{annotation\_width =} \FunctionTok{unit}\NormalTok{(}\FloatTok{0.5}\NormalTok{, }\StringTok{"cm"}\NormalTok{)}
+\NormalTok{)}
+\end{Highlighting}
+\end{Shaded}
+
+Note that the ``onset'' label above the graph is actually incorrect. The
+first half of the samples are early onset, and the second half are late
+onset. This can be confirmed by comparing the column names with
+``sample\_labels\_subset''. The program seems to automatically sort the
+annotations into 4 groups, and we cannot find out how to change this.
 
 There are some general similarities between our heatmap and the heatmap
 shown in the paper. It appears that there are differences in expression
 between the early- and late-onset cohorts. Both our heatmap and the
-heatmap in the paper seem to have higher expression levels visible in
-the top left and bottom right quadrants, and lower expression in the
+heatmap shown in the paper seem to have higher expression levels visible
+in the top left and bottom right quadrants, and lower expression in the
 bottom left and top right quadrants. However, there seem to be some
 genes in our list with high expression across all samples that overwhelm
 the signal. To determine whether the issue is with the list of genes we
@@ -761,7 +1061,7 @@ appendix table 1.
 
 \begin{Shaded}
 \begin{Highlighting}[]
-\CommentTok{\#Heat map 2, based on authors\textquotesingle{} DEG list:}
+\CommentTok{\#Second heatmap, based on authors\textquotesingle{} DEG list:}
 \CommentTok{\#As before, for the heatmap input, we make a matrix of z scores, this time for only the genes in the authors\textquotesingle{} gene list}
 \NormalTok{heatmap\_authorList\_data }\OtherTok{\textless{}{-}} \FunctionTok{as.data.frame}\NormalTok{(}\FunctionTok{cbind}\NormalTok{(}\FunctionTok{rownames}\NormalTok{(dge\_counts\_normalized\_z\_scores), dge\_counts\_normalized\_z\_scores))}
 \FunctionTok{colnames}\NormalTok{(heatmap\_authorList\_data)[}\DecValTok{1}\NormalTok{] }\OtherTok{\textless{}{-}} \StringTok{"Gene"}
@@ -778,23 +1078,30 @@ appendix table 1.
 \FunctionTok{library}\NormalTok{(circlize)}
 \NormalTok{my\_colors }\OtherTok{\textless{}{-}} \FunctionTok{colorRamp2}\NormalTok{(}\FunctionTok{c}\NormalTok{(}\SpecialCharTok{{-}}\DecValTok{4}\NormalTok{, }\DecValTok{0}\NormalTok{, }\DecValTok{4}\NormalTok{), }\FunctionTok{c}\NormalTok{(}\StringTok{"green"}\NormalTok{, }\StringTok{"black"}\NormalTok{, }\StringTok{"red"}\NormalTok{))}
 
+
+\CommentTok{\# We attempted to make column labels, but }
+\CommentTok{\#}
 \CommentTok{\# onset\_labels = HeatmapAnnotation(df = as.data.frame(c(rep(0, 49), rep(1, 50))), }
 \CommentTok{\#                                  gp = gpar(col = "black"), show\_legend = FALSE, }
 \CommentTok{\#                                  which = "column")}
 
-\NormalTok{onset\_labels }\OtherTok{=} \FunctionTok{HeatmapAnnotation}\NormalTok{(}\AttributeTok{bar =} \FunctionTok{c}\NormalTok{(}\FunctionTok{rep}\NormalTok{(}\DecValTok{0}\NormalTok{, }\DecValTok{49}\NormalTok{), }\FunctionTok{rep}\NormalTok{(}\DecValTok{1}\NormalTok{, }\DecValTok{50}\NormalTok{)),}
-                                 \AttributeTok{col =} \FunctionTok{list}\NormalTok{(}\AttributeTok{bar =} \FunctionTok{c}\NormalTok{(}\StringTok{"1"} \OtherTok{=} \StringTok{"yellow"}\NormalTok{, }\StringTok{"0"} \OtherTok{=} \StringTok{"blue"}\NormalTok{)),}
-                                 \AttributeTok{gp =} \FunctionTok{gpar}\NormalTok{(}\AttributeTok{col =} \StringTok{"black"}\NormalTok{), }\AttributeTok{show\_legend =} \ConstantTok{FALSE}\NormalTok{)}
+
+\CommentTok{\#}
+\CommentTok{\# EorL \textless{}{-} c(rep(0, 49), rep(1, 50))}
+\CommentTok{\# onset\_labels = HeatmapAnnotation(onset = EorL,}
+\CommentTok{\#                                  col = list(onset = c("0" = "yellow", "1" = "blue")),}
+\CommentTok{\#                                  gp = gpar(col = "black"), show\_legend = FALSE)}
 
 \NormalTok{heatmap\_authorList }\OtherTok{\textless{}{-}} \FunctionTok{Heatmap}\NormalTok{(heatmap\_authorList\_data, }\AttributeTok{heatmap\_legend\_param =} \FunctionTok{list}\NormalTok{(}\AttributeTok{title =} \StringTok{""}\NormalTok{), }\AttributeTok{col =}\NormalTok{ my\_colors, }
                      \AttributeTok{show\_row\_dend =} \ConstantTok{FALSE}\NormalTok{, }\AttributeTok{show\_column\_dend =} \ConstantTok{FALSE}\NormalTok{,}
                      \AttributeTok{row\_order =} \FunctionTok{rownames}\NormalTok{(heatmap\_authorList\_data), }\AttributeTok{column\_order =}\NormalTok{ sample\_labels\_subset}\SpecialCharTok{$}\NormalTok{X}\FloatTok{.1}\NormalTok{,}
-                     \AttributeTok{top\_annotation =}\NormalTok{ onset\_labels)}
+                     \CommentTok{\#top\_annotation = onset\_labels,}
+                     \AttributeTok{cluster\_columns =} \ConstantTok{FALSE}\NormalTok{)}
 \NormalTok{heatmap\_authorList}
 \end{Highlighting}
 \end{Shaded}
 
-\includegraphics{SG_LB_BMEG591E_FinalProject_files/figure-latex/unnamed-chunk-7-1.pdf}
+\includegraphics{SG_LB_BMEG591E_FinalProject_files/figure-latex/unnamed-chunk-14-1.pdf}
 
 This heat map also has some visible differences between the early onset
 and late onset groups, but it has the same issue with globally
@@ -816,13 +1123,14 @@ include: - Calculating the z scores before calculating cpm, or only
 calculating z scores without cpm. - Removing high-signal genes and
 re-scaling (say, removing the top 6 genes with the highest sum of values
 across rows). - Performing one or more of the normalization steps (TMM,
-cpm, and/or z-scores) after filtering the genes. - Contacting the
-authors to inquire about their normalization steps
+cpm, and/or z-scores) after filtering the genes. - Filtering based on
+false discovery rate (FDR) instead of P-value and logFC. - Contacting
+the authors to inquire about their normalization steps
 
 In the interest of time, we will not experiment with altering the order
 of these steps, but the above would be a worthwhile approach.
 
-Part II C: Generating a volcano plot from the DEG list
+Part IIC: Generating a volcano plot from the DEG list
 
 \begin{Shaded}
 \begin{Highlighting}[]
@@ -851,7 +1159,7 @@ Part II C: Generating a volcano plot from the DEG list
 \end{Highlighting}
 \end{Shaded}
 
-\includegraphics{SG_LB_BMEG591E_FinalProject_files/figure-latex/unnamed-chunk-8-1.pdf}
+\includegraphics{SG_LB_BMEG591E_FinalProject_files/figure-latex/unnamed-chunk-15-1.pdf}
 
 \begin{Shaded}
 \begin{Highlighting}[]
@@ -871,7 +1179,7 @@ Part II C: Generating a volcano plot from the DEG list
 \end{Highlighting}
 \end{Shaded}
 
-\includegraphics{SG_LB_BMEG591E_FinalProject_files/figure-latex/unnamed-chunk-9-1.pdf}
+\includegraphics{SG_LB_BMEG591E_FinalProject_files/figure-latex/unnamed-chunk-16-1.pdf}
 
 \begin{Shaded}
 \begin{Highlighting}[]
@@ -891,29 +1199,29 @@ Part II C: Generating a volcano plot from the DEG list
 \end{Highlighting}
 \end{Shaded}
 
-\includegraphics{SG_LB_BMEG591E_FinalProject_files/figure-latex/unnamed-chunk-10-1.pdf}
+\includegraphics{SG_LB_BMEG591E_FinalProject_files/figure-latex/unnamed-chunk-17-1.pdf}
 
 These volcano plots display the genes that meet the authors' defined
 threshold values for \textbar log2FC\textbar{} and -log10 P-value in the
 top right and left squares. Since the filtered volcano plots only
-include the genes that already met the threshold values, they only
-consist of genes that meth the threshold values. The authors only
-included their filtered gene list in the appendix, so we cannot compare
-their unfiltered list to ours. The gene NTS appears to be at or near the
-same position in all 3 volcano plots as well as the Figure 2 plot shown
-in the paper, which is supporting evidence that our analysis replicated
-correctly. A zoomed-in image of the volcano\_authorList\_filtered plot
-shows that the positions of DKK4, CCL19, and PRSS33 match between this
-plot and the Figure 2 plot in the paper, which further supports that our
-replication of Figure 2 is successful. Other genes are not labelled in
-the paper but appear in the same positions between the 3 plots
-(e.g.~DHRS1, CCDC88B, CDK12). When comparing our filtered list to the
-authors' filtered list, it is apparent that ours includes some genes
-with much higher \textbar log2FC\textbar{} and -log10P values than those
-identified by the authors (as discussed earlier, e.g.~the top 4 and
-bottom 4 log2FC genes). It remains unclear why the authors excluded
-these genes from the analysis given their low FDR values, and this bears
-further investigation.
+include the genes that already met the threshold values, they only show
+genes in these squares. The authors only included their filtered gene
+list in the appendix, so we cannot compare their unfiltered list to
+ours. The gene NTS appears to be at or near the same position in all 3
+volcano plots as well as the Figure 2 plot shown in the paper, which is
+supporting evidence that our analysis replicated correctly. A zoomed-in
+image of the volcano\_authorList\_filtered plot shows that the positions
+of DKK4, CCL19, and PRSS33 match between this plot and the Figure 2 plot
+in the paper, which further supports that our replication of Figure 2 is
+successful. Other genes are not labelled in the paper but appear in the
+same positions between the 3 plots (e.g.~DHRS1, CCDC88B, CDK12). When
+comparing our filtered list to the authors' filtered list, it is
+apparent that ours includes some genes with much higher
+\textbar log2FC\textbar{} and -log10P values than those identified by
+the authors (as discussed earlier, e.g.~the top 4 and bottom 4 log2FC
+genes). It remains unclear why the authors excluded these genes from the
+analysis given their low FDR values, and this bears further
+investigation.
 
 Conclusion:
 
@@ -926,18 +1234,24 @@ conclude that they bear investigation. Our heatmap displayed visible
 differences between early and late onset colorectal cancer groups, but
 these differences were less obvious than in the original paper, and we
 had issues with globally highly expressed genes. Comparison with a
-heatmap that used the authors' DGE led us to conclude that the
+heatmap that used the authors' DEG list led us to conclude that the
 differences in our heatmap were more related to the normalization steps
-than the DGE list. We proposed further steps that could be taken to
-rectify our normalization steps. Comparison of the three volcano plots
-that we generated provides good evidence that we properly replicated the
-authors' methods for producing a DGE list, and further demonstrates that
-the highly differentially expressed genes on our list that were not in
-the authors' list warrant further investigation. Overall, we were able
-to successfully repeat the steps of the authors' analysis using the data
+than the DEG list. We proposed further steps that could be taken to
+rectify our normalization. Comparison of the three volcano plots that we
+generated gave good evidence that we properly replicated the authors'
+methods for producing a DEG list, and further demonstrates that the
+highly differentially expressed genes on our list that were not in the
+authors' list warrant further investigation. Overall, we were able to
+successfully repeat the steps of the authors' analysis using the data
 they had made publicly available on GEO, and our results were comparable
 to theirs, though there are some interesting discrepancies that could
-benefit from further analysis.
+benefit from further inquiry.
+
+Authors: Liam Brockley (26182865) and Sakshi Goyal (72365547)
+
+Contributions: Liam and Sakshi worked together to complete the
+assignment. Liam typed for the first half and Sakshi typed for the
+second half.
 
 References:
 

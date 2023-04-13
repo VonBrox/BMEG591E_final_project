@@ -43,6 +43,103 @@ LateOnset_SRR21523091
 EarlyOnset_SRR21523117
 EarlyOnset_SRR21523118
 
+In the following script, we tried to carry out all pre-processing steps only for the sample EarlyOnset_SRR21523117.
+We then incorporated all of these steps into a pipeline that could be used to process any number of samples.
+
+1. Check quality of raw fastqs using fastqc
+
+```{bash, eval=FALSE}
+
+sample=EarlyOnset_SRR21523117
+fastqc -o ./fastQC_output $sample"_pass_1.fastq.gz" $sample"__pass_2.fastq.gz"
+
+```
+
+As shown below, the fastq file failed the per base sequence content and adapter content quality metrics. This showed that we needed to trim adapters and indexes.
+
+![sequence content](./EarlyOnset_SRR21523117_pass_1_fastqc_basecontent.png)
+
+![adapter content](./EarlyOnset_SRR21523117_pass_1_fastqc_adaptercontent.png)
+2. Trim adapters using cutadapt
+
+This study used the TruSeq Stranded mRNA LT Sample Prep Kit to prepare samples.
+
+According to the Illumina Adapter Sequences manual (Document # 1000000002694 v17 pg. 48):
+https://support.illumina.com/downloads/illumina-adapter-sequences-document-1000000002694.html
+
+The sequence that can be used for TruSeq universal adapter trimming is:
+
+AATGATACGGCGACCACCGAGATCTACACTCTTTCCCTACACGACGCTCTTCCGATCT
+
+The authors were not especially clear about the adapter sequences they used, but fastqc detected universal adapter sequences in this sample, so we will assume they used this sequence and use cutadapt to trim it.
+
+```{bash, eval=FALSE}
+
+# Trim adapters using cutadapt
+
+sample=EarlyOnset_SRR21523117
+
+cutadapt --cut 10 -a AATGATACGGCGACCACCGAGATCTACACTCTTTCCCTACACGACGCTCTTCCGATCT -o $sample.trimmed._pass_1.fastq.gz $sample"_pass_1.fastq.gz"
+
+cutadapt --cut 10 -a AATGATACGGCGACCACCGAGATCTACACTCTTTCCCTACACGACGCTCTTCCGATCT -o $sample.trimmed._pass_2.fastq.gz $sample"_pass_2.fastq.gz"
+
+#Check the resulting fastq files for improvement in base quality
+
+fastqc -o ./fastQC_output $sample.trimmed._pass_1.fastq.gz $sample.trimmed._pass_2.fastq.gz
+
+```
+![adapter content](./EarlyOnset_SRR21523117_pass_1_fastqc_basecontent_trimmed.png)
+
+Trimming improved the per base sequence content quality metric by removing the first 10 bases from the reads in the fastqs (shown above), but the adapter content did not change, which means that a different adapter sequence was used. Since we do not know what this sequence was, we will move on and use the resulting trimmed fastqs for subsequent steps.
+
+3. Align fastqs to hg38 reference genome using bowtie2 and convert to BAM file
+
+```{bash, eval=FALSE}
+
+# Paired-end alignment of trimmed fatsq files with the hg38 reference genome
+
+sample=EarlyOnset_SRR21523117
+
+bowtie2 -x /projects/bmeg/indexes/hg38/hg38_bowtie2_index -1 $sample.trimmed._pass_1.fastq.gz -2 $sample.trimmed._pass_2.fastq.gz -S $sample.aligned.sam
+
+# Sam to Bam conversion using samtools:
+
+samtools view -h -b -o $sample.aligned.bam $sample.aligned.sam
+
+```
+
+4. Produce a counts file using featurecounts
+
+```{bash, eval=FALSE}
+#Download and unpack the subreads package
+wget --no-check-certificate https://sourceforge.net/projects/subread/files/subread-2.0.4/subread-2.0.4-Linux-x86_64.tar.gz
+tar zxvf subread-2.0.4-Linux-x86_64.tar.gz
+
+#Add the bin folder to the $PATH so we can use featureCounts
+export PATH=/home/lbrockley_bmeg23/subread-2.0.4-Linux-x86_64/bin:$PATH
+
+#Copy the hg38 annotation file in the subreads folder to the final project file to use for annotation with featurecounts
+cp hg38_RefSeq_exon.txt /home/lbrockley_bmeg23/final_project/
+#Convert to the preferred file extension (saf)
+cp hg38_RefSeq_exon.txt hg38_RefSeq_exon.saf
+
+#Summarize and count paired-end reads:
+sample=EarlyOnset_SRR21523117
+featureCounts -p --countReadPairs -t exon -g gene_id -F 'SAF' -a hg38_RefSeq_exon.saf -o $sample.counts.txt $sample.aligned.bam
+
+```
+
+The output of this script was a read counts file with 28397 rows:
+
+```{r}
+EarlyOnset_SRR21523117_counts <- read.csv('EarlyOnset_SRR21523117.counts.csv')
+head(EarlyOnset_SRR21523117_counts)
+
+```
+
+The featureCounts program stated that a total of 56732052 alignments occurred, and 21202936 (37.4%) of alignments were successfully assigned.
+
+Once we had verified these steps for one sample, we incorporated them into a pipeline.
 We used the script runTheseJobsSerially from assignment 2, and tested the pipeline as follows:
 
 ```{bash, eval=FALSE}
@@ -51,44 +148,6 @@ We used the script runTheseJobsSerially from assignment 2, and tested the pipeli
 ./runTheseJobsSerially.sh ./fastqToReadCounts.sh sample_names.txt
 
 ```
-
-```{bash}
-
-#[[Temporary: testing before incorporating into pipeline]]
-#Trim adapters using cutadapt
-#Possible adapter sequence for TruSeq LT: https://knowledge.illumina.com/library-preparation/general/library-preparation-general-reference_material-list/000001314
-
-sample=EarlyOnset_SRR21523117
-cutadapt -a AGATCGGAAGAGCACACGTCTGAACTCCAGTCA -o $sample.F.fastq.gz -p $sample.R.fastq.gz $sample"_pass_1.fastq.gz" $sample"_pass_2.fastq.gz"
-
-#^Above resulted in error, quality index didn't match read length on a line?
-#Since the adapter sequence is unknown, but the paper states that the reads are 100 bp, I will use cutadapt to trim reads down to 100 bp, which should hopefully remove adapter sequences.
-
-sample=EarlyOnset_SRR21523117
-cutadapt --pair-filter=any -l 100 -o $sample.F.fastq.gz -p $sample.R.fastq.gz $sample"_pass_1.fastq.gz" $sample"_pass_2.fastq.gz"
-#Fastqc showed that above did not work for some reason. Moving on
-
-#Could also try  using trimmomatic:
-
-trimmomatic PE $sample"_pass_1.fastq.gz" $sample"_pass_2.fastq.gz" output_forward_paired.fq.gz output_forward_unpaired.fq.gz output_reverse_paired.fq.gz output_reverse_unpaired.fq.gz ILLUMINACLIP:TruSeq3-PE.fa:2:30:10:2:True LEADING:3 TRAILING:3 MINLEN:36
-
-#Performed already :
-# Aligning: Paired-end alignment of fatsq files with the hg38 reference genome
-bowtie2 -x /projects/bmeg/indexes/hg38/hg38_bowtie2_index -1 EarlyOnset_SRR21523117_pass_1.fastq.gz -2 EarlyOnset_SRR21523117_pass_2.fastq.gz -S EarlyOnset_SRR21523117.sam
-# Sam to Bam Conversion:
-samtools view -h -b -o EarlyOnset_SRR21523117.bam EarlyOnset_SRR21523117.sam
-#[W::sam_read1] Parse error at line 10742665
-#[main_samview] truncated file.
-
-
-#Summarize paired-end reads and count fragments (instead of reads):
-featureCounts -p --countReadPairs -t exon -g gene_id -a annotation.gtf -o counts.txt [mapping_results_PE.bam]
-
-
-
-```
-
-
 
 ```{bash, eval=FALSE}
 
@@ -108,7 +167,7 @@ if [ ! -e $logDir/$sample.fastqc.done ] #run this code only if record of fastqc 
 then
         echo Performing fastqc of sample $sample with the following fastqs:
         ls $sample"_pass_1.fastq.gz" $sample"_pass_2.fastq.gz"
-        fastqc -o . $sample"_pass_1.fastq.gz" $sample"_pass_2.fastq.gz"
+        fastqc -o ./fastQC_output $sample"_pass_1.fastq.gz" $sample"_pass_2.fastq.gz"
         touch $logDir/$sample.fastqc.done #create record to prevent repeating process on same file
 else # $logDir/$sample.fastqc.done was not missing
         echo Already performed fastqc of $sample
@@ -146,33 +205,10 @@ then
         echo Performing conversion of sample $sample from .sam to .bam with the following .sam file:
         ls $sample.alignment.sam
         samtools view -h -b -o $sample.alignment.bam $sample.alignment.sam
+        rm $sample.alignment.sam #Remove the unnecessary sam file
         touch $logDir/$sample.sam_to_bam.done #create record to prevent repeating process on same file
 else # $logDir record was not missing
         echo Already performed conversion of .sam to .bam for $sample
-fi
-#
-# Use sambamba to sort the .bam file
-#
-if [ ! -e $logDir/$sample.sambamba_sort.done ] #run this code only if record is missing
-then
-        echo Sorting $sample .bam file for the following:
-        ls $sample.alignment.bam
-        sambamba sort $sample.alignment.bam
-        touch $logDir/$sample.sambamba_sort.done #create record to prevent repeating process on same file
-else # $logDir record was not missing
-        echo Already performed sambamba sort for $sample
-fi
-#
-#Use sambamba to keep only uniquely mapped reads
-#
-if [ ! -e $logDir/$sample.sambamba_unique_reads_filter.done ] #run this code only if record is missing
-then
-        echo Filtering for unique reads in $sample in the following file:
-        ls $sample.alignment.sorted.bam
-        sambamba view -F "[XS] == null and not unmapped and not duplicate" -h -f bam -o $sample.alignment.sorted.filtered.bam $sample.alignment.sorted.bam 
-        touch $logDir/$sample.sambamba_unique_reads_filter.done #create record to prevent repeating process on same file
-else # $logDir record was not missing
-        echo Already filtered unique reads for $sample
 fi
 #
 # Count the aligned reads using featureCounts in the Subread 2.0.3 package:
