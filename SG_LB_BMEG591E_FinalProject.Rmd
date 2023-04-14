@@ -5,7 +5,7 @@ date: "2023-04-05"
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = TRUE, include = FALSE)
 ```
 
 Introduction:
@@ -214,18 +214,6 @@ else # $logDir record was not missing
         echo Already performed conversion of .sam to .bam for $sample
 fi
 #
-# Count the aligned reads using featureCounts in the Subread 2.0.3 package:
-#
-if [ ! -e $logDir/$sample.featureCounts.done ] #run this code only if record is missing
-then
-        echo Counting features in $sample in the following file:
-        ls $sample.alignment.sorted.filtered.bam 
-        featureCounts -p --countReadPairs -t exon -g gene_id -o counts.txt $sample.alignment.sorted.filtered.bam        
-        touch $logDir/$sample.featureCounts.done #create record to prevent repeating process on same file
-else # $logDir record was not missing
-        echo Already counted features for $sample
-fi
-#
 echo finished pipeline for $sample
 ```
 
@@ -233,6 +221,7 @@ We then ran featureCounts on all the BAM files generated.
 
 ```{bash, eval=FALSE}
 featureCounts -p --countReadPairs -t exon -g gene_id -F 'SAF' -a hg38_RefSeq_exon.saf -o counts.txt *.bam
+
 ```
 
 
@@ -358,8 +347,11 @@ heatmap_ourList <- Heatmap(heatmap_data, heatmap_legend_param = list(title = "")
 
 heatmap_ourList
 ```
+![sequence content](./heatmap_ourlist.png)
 
-We have left the sample names and gene names in the heatmap, so that it can be verified that the samples are sorted into early and late-onset groups (left half: early-onset, right half: late-onset), and the gene list matches our gene list. It appears that in both our heatmap and the heatmap shown in the paper, there are differences in expression between the early- and late-onset cohorts. Both heatmaps have higher expression levels visible in the top left and bottom right quadrants, and lower expression in the bottom left and top right quadrants. This gives some evidence that we correctly selected genes that were differentially expressed between early-onset and late-onset groups. However, there are some genes in our list with high expression across all samples that overwhelm the signal, and there appear to be no genes with z-scores below -2 in our heatmap. To determine whether the issue is with the list of genes we used, we made another heatmap using the DEG list from the authors' appendix table 1.
+In this heatmap, we have plotted the z-scores (as discussed) for the cpm gene expression values of our top logFC ranked genes for all patient samples. We have sorted the patient samples into early-onset (left) and late-onset (right).We have left the sample names and gene names in the heatmap, so that it can be verified that the samples are sorted into early and late-onset groups (left half: early-onset, right half: late-onset), and the gene list matches our gene list. 
+
+It appears that in both our heatmap and the heatmap shown in the paper, there are differences in expression between the early- and late-onset cohorts. Both heatmaps have higher expression levels visible in the top left and bottom right quadrants, and lower expression in the bottom left and top right quadrants. This gives some evidence that we correctly selected genes that were differentially expressed between early-onset and late-onset groups. However, there are some genes in our list with high expression across all samples that overwhelm the signal, and there appear to be no genes with z-scores below -2 in our heatmap. To determine whether the issue is with the list of genes we used, we made another heatmap using the DEG list from the authors' appendix table 1.
 
 
 ```{r}
@@ -387,16 +379,16 @@ heatmap_authorList <- Heatmap(heatmap_authorList_data, heatmap_legend_param = li
                      cluster_columns = FALSE)
 heatmap_authorList
 ```
-
-This heat map also has some visible differences between the early onset and late onset groups, but it has the same issue with globally overexpressed genes as the first heatmap.
+![sequence content](./heatmap_authorlist.png)
+In general, this heatmap looks quite similar to the heatmap generated from genes in out DEG list. This heat map also has some visible differences between the early onset and late onset groups, but it has the same issue with globally overexpressed genes as the first heatmap.
 
 This suggests that the difference between our heatmap and the paper's likely results mainly from our normalization steps, rather than our gene list, since the gene list for the second heatmap was the same as the one used in the paper. It is worth noting that we have sorted the samples by cohort (early-onset and late-onset), but we do not know whether they are sorted within each cohort in the same way as in the paper, so this could contribute to differences in appearance between the paper's heatmap and ours. The paper's description of the normalization method is brief (for example, z-score normalization was not mentioned), so the order in which steps were carried out is unclear. 
 
 Possible further approaches to replicate the paper's results might include:
    - Calculating the z scores before calculating cpm, or only calculating z scores without cpm.
    - Removing high-signal genes and re-scaling (say, removing the top 6 genes with the highest sum of values across rows).
-   - Performing one or more of the normalization steps (TMM, cpm, and/or z-scores) after filtering the genes.
-   - Filtering based on false discovery rate (FDR) instead of P-value and logFC.
+   - Performing one or more of the normalization steps (TMM, cpm, and/or z-scores) after filtering the genes instead of doing these all before      filtering.
+   - Filtering based on false discovery rate (FDR) instead of P-value and logFC (as discussed).
    - Contacting the authors to inquire about their normalization steps
 
 In the interest of time, we will not experiment with altering the order of these steps, but the above could be a good approach.
@@ -424,6 +416,7 @@ volcano_ourList_unfiltered <- EnhancedVolcano(dge_fc,
 volcano_ourList_unfiltered
 
 ```
+![sequence content](./volcano_ourlist_unfiltered.png)
 ```{r}
 #Volcano plot based on our filtered DGE gene list:
 library(EnhancedVolcano)
@@ -440,6 +433,8 @@ volcano_ourList_filtered <- EnhancedVolcano(dge_fc_filtered,
 volcano_ourList_filtered
 ```
 
+![sequence content](./volcano_ourlist_filtered.png)
+
 ```{r}
 # Volcano plot based on the authors' filtered DGE gene list:
 library(EnhancedVolcano)
@@ -455,6 +450,7 @@ volcano_authorList_filtered <- EnhancedVolcano(paper_dge_fc,
                 caption = "")
 volcano_authorList_filtered
 ```
+![sequence content](./volcano_authorlist_filtered.png)
 
 Since the filtered volcano plots only include the genes that already met the threshold values, they only show genes in the top right and left squares. The authors only included their filtered gene list in the appendix, so we cannot compare their unfiltered list to ours.
 
@@ -462,11 +458,9 @@ Several genes appear to match in position between these four plots, including NT
 
 Conclusion:
 
-Our pre-processing steps generated read counts from fastq files provided on the GEO database. When we performed differential gene expression analysis using the counts file provided on the GEO database, a large number of genes matched between our filtered DEG list and the authors' list, and the values obtained for logP, log2FC, and FDR were generally very close. Notably, the 8 most differentially expressed genes we found were not present in the authors' list. Since these genes also have very low FDR values, we conclude that they bear further investigation. Our heatmap displayed visible differences between early and late onset colorectal cancer groups, but these differences were less obvious than in the original paper, and we had issues with globally highly expressed genes. Comparison with a heatmap that used the authors' DEG list led us to conclude that the differences in our heatmap were more related to the normalization steps than the DEG list. We proposed further steps that could be taken to rectify our normalization. Comparison of the three volcano plots that we generated gave good evidence that we properly replicated the authors' methods for producing a DEG list, and further demonstrates that the highly differentially expressed genes on our list that were not in the authors' list warrant further investigation. Overall, we were able to successfully repeat the steps of the authors' analysis using the data they had made publicly available on GEO, and our results were comparable to theirs, though there are some interesting discrepancies that could benefit from further analysis.
+Our pre-processing steps generated read counts from fastq files provided on the GEO database. The authors did not write out a detailed description of their pre-processing steps, so we followed their general description as well as we could. When we performed differential gene expression analysis using the counts file provided on the GEO database, a large number of genes matched between our filtered DEG list and the authors' list, and the values obtained for logP, log2FC, and FDR were generally very close. Notably, the 8 most differentially expressed genes we found were not present in the authors' list. Since these genes also have very low FDR values, we conclude that they bear further investigation. Our heatmap displayed visible differences between early and late onset colorectal cancer groups, but these differences were less obvious than in the original paper, and we had issues with globally highly expressed genes. Comparison with a heatmap that used the authors' DEG list led us to conclude that the differences in our heatmap were more related to the normalization steps than the DEG list. We proposed further steps that could be taken to rectify our normalization. Comparison of the three volcano plots that we generated gave good evidence that we properly replicated the authors' methods for producing a DEG list, and further demonstrates that the highly differentially expressed genes on our list that were not in the authors' list warrant further investigation. Overall, we were able to successfully repeat the steps of the authors' analysis using the data they had made publicly available on GEO, and our results were comparable to theirs, though there are some interesting discrepancies that could benefit from further analysis.
 
 Authors: Liam Brockley (26182865) and Sakshi Goyal (72365547)
-
-Contributions: Liam and Sakshi worked together to complete the assignment. Liam typed for the first half and Sakshi typed for the second half.
 
 References:
 
