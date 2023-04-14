@@ -36,12 +36,6 @@ EarlyOnset_SRR21523117_pass_2.fastq.gz
 EarlyOnset_SRR21523118_pass_1.fastq.gz
 EarlyOnset_SRR21523118_pass_2.fastq.gz
 
-To facilitate the pipeline, we made a task file called sample_names.txt, with the following contents:
-
-LateOnset_SRR21523090
-LateOnset_SRR21523091
-EarlyOnset_SRR21523117
-EarlyOnset_SRR21523118
 
 In the following script, we tried to carry out all pre-processing steps only for the sample EarlyOnset_SRR21523117.
 We then incorporated all of these steps into a pipeline that could be used to process any number of samples.
@@ -52,15 +46,6 @@ We then incorporated all of these steps into a pipeline that could be used to pr
 
 sample=EarlyOnset_SRR21523117
 fastqc -o ./fastQC_output $sample"_pass_1.fastq.gz" $sample"__pass_2.fastq.gz"
-
-# Aligning: Paired-end alignment of fatsq files with the hg38 reference genome
-
-bowtie2 -x /projects/bmeg/indexes/hg38/hg38_bowtie2_index -1 EarlyOnset_SRR21523117_pass_1.fastq.gz -2 EarlyOnset_SRR21523117_pass_2.fastq.gz -S EarlyOnset_SRR21523117.sam
-
-# Sam to Bam Conversion:
-
-
-# Counting aligned reads using featureCount (subread package)
 
 ```
 
@@ -80,7 +65,7 @@ The sequence that can be used for TruSeq universal adapter trimming is:
 
 AATGATACGGCGACCACCGAGATCTACACTCTTTCCCTACACGACGCTCTTCCGATCT
 
-The authors were not especially clear about the adapter sequences they used, but fastqc detected universal adapter sequences in this sample, so we will assume they used this sequence and use cutadapt to trim it.
+The authors were not clear about the adapter sequences they used, but fastqc detected universal adapter sequences in this sample, so we will assume they used this sequence and use cutadapt to trim it.
 
 ```{bash, eval=FALSE}
 
@@ -99,7 +84,7 @@ fastqc -o ./fastQC_output $sample.trimmed._pass_1.fastq.gz $sample.trimmed._pass
 ```
 ![adapter content](./EarlyOnset_SRR21523117_pass_1_fastqc_basecontent_trimmed.png)
 
-Trimming improved the per base sequence content quality metric by removing the first 10 bases from the reads in the fastqs (shown above), but the adapter content did not change, which means that a different adapter sequence was used. Since we do not know what this sequence was, we will move on and use the resulting trimmed fastqs for subsequent steps.
+Trimming improved the per base sequence content quality metric by removing the first 10 bases from the reads in the fastqs (as shown above), but the adapter content did not change, which means that a different adapter sequence was used. Since we do not know what this sequence was, we will move on and use the resulting trimmed fastqs for subsequent steps.
 
 3. Align fastqs to hg38 reference genome using bowtie2 and convert to BAM file
 
@@ -117,7 +102,9 @@ samtools view -h -b -o $sample.aligned.bam $sample.aligned.sam
 
 ```
 
-4. Produce a counts file using featurecounts
+4. Produce a counts file using featureCounts
+
+After this step, we should have a text file that displays the number of reads assigned to each given gene ID. This will tell us the expression levels of each gene.
 
 ```{bash, eval=FALSE}
 #Download and unpack the subreads package
@@ -138,7 +125,7 @@ featureCounts -p --countReadPairs -t exon -g gene_id -F 'SAF' -a hg38_RefSeq_exo
 
 ```
 
-The output of this script was a read counts file with 28397 rows:
+The output of this script is a read counts file with 28397 rows:
 
 ```{r}
 EarlyOnset_SRR21523117_counts <- read.csv('EarlyOnset_SRR21523117.counts.csv')
@@ -146,21 +133,28 @@ head(EarlyOnset_SRR21523117_counts)
 
 ```
 
-The featureCounts program stated that a total of 56732052 alignments occurred, and 21202936 (37.4%) of alignments were successfully assigned.
+The featureCounts program states that a total of 56732052 alignments occurred, and 21202936 (37.4%) of alignments were successfully assigned. It is likely that the performance of the alignment would have been better if we had removed the correct adapter sequences using cutadapt.
 
 Once we had verified these steps for one sample, we incorporated them into a pipeline.
-We used the script runTheseJobsSerially from assignment 2, and tested the pipeline as follows:
+
+We made a task file called sample_names.txt, with the following contents:
+
+LateOnset_SRR21523090
+LateOnset_SRR21523091
+EarlyOnset_SRR21523117
+EarlyOnset_SRR21523118
+
+We used the script runTheseJobsSerially from assignment 2, made a pipeline file called fastqToReadCounts.sh, and tested the pipeline as follows:
 
 ```{bash, eval=FALSE}
-## Test the script by running this, with your modified pipeline script in place of fastqToFilteredBam.sh
+## Pipeline test
 
-./runTheseJobsSerially.sh ./fastqToReadCounts.sh sample_names.txt
+./runTheseJobsSerially.sh ./fastqToBam.sh sample_names.txt
 
 ```
 
 ```{bash, eval=FALSE}
-
-##Pipeline for fastqToReadCounts
+##fastqToBam pipeline
 #
 set -e # this makes the whole script exit on any error.
 sample=$1
@@ -184,16 +178,16 @@ fi
 #
 # Trim adapters using cutadapt:
 #
-if [ ! -e $logDir/$sample.alignment.done ] #run this code only if record of alignment is missing
+if [ ! -e $logDir/$sample.trimming.done ] #run this code only if record is missing
 then
-        echo Performing bowtie2 alignment of sample $sample with the following fastqs:
+        echo Performing cutadapt trim of sample $sample with the following fastqs:
         ls $sample"_pass_1.fastq.gz" $sample"_pass_2.fastq.gz"
-        bowtie2 -x /projects/bmeg/indexes/hg38/hg38_bowtie2_index -1 $sample"_pass_1.fastq.gz" -2 $sample"_pass_2.fastq.gz" -S $sample.alignment.sam
-        touch $logDir/$sample.alignment.done #create record to prevent repeating process on same file
+        cutadapt --cut 10 -a AATGATACGGCGACCACCGAGATCTACACTCTTTCCCTACACGACGCTCTTCCGATCT -o $sample.trimmed._pass_1.fastq.gz $sample"_pass_1.fastq.gz"
+        cutadapt --cut 10 -a AATGATACGGCGACCACCGAGATCTACACTCTTTCCCTACACGACGCTCTTCCGATCT -o $sample.trimmed._pass_2.fastq.gz     $sample"_pass_2.fastq.gz"
+        touch $logDir/$sample.trimming.done #create record to prevent repeating process on same file
 else # $logDir record was not missing
-        echo Already performed bowtie2 alignment of $sample
+        echo Already performed cutadapt trim of $sample
 fi
-cutadapt --pair-filter=any -l 100 -o $sample.F.fastq.gz -p $sample.R.fastq.gz $sample"_pass_1.fastq.gz" $sample"_pass_2.fastq.gz"
 #
 # Align reads to the hg38 reference genome using bowtie2 (the group used HISAT2 but these tools are comparable for RNASeq data):
 #
@@ -201,7 +195,7 @@ if [ ! -e $logDir/$sample.alignment.done ] #run this code only if record of alig
 then
         echo Performing bowtie2 alignment of sample $sample with the following fastqs:
         ls $sample"_pass_1.fastq.gz" $sample"_pass_2.fastq.gz"
-        bowtie2 -x /projects/bmeg/indexes/hg38/hg38_bowtie2_index -1 $sample"_pass_1.fastq.gz" -2 $sample"_pass_2.fastq.gz" -S $sample.alignment.sam
+        bowtie2 -x /projects/bmeg/indexes/hg38/hg38_bowtie2_index -1 $sample.trimmed_pass_1.fastq.gz -2 $sample.trimmed._pass_2.fastq.gz -S $sample.alignment.sam
         touch $logDir/$sample.alignment.done #create record to prevent repeating process on same file
 else # $logDir record was not missing
         echo Already performed bowtie2 alignment of $sample
@@ -235,10 +229,16 @@ fi
 echo finished pipeline for $sample
 ```
 
+We then ran featureCounts on all the BAM files generated.
 
-Part II: Analysis of read counts data to identify differentially expressed genes (DEG)
+```{bash, eval=FALSE}
+featureCounts -p --countReadPairs -t exon -g gene_id -F 'SAF' -a hg38_RefSeq_exon.saf -o counts.txt *.bam
+```
 
-To replicate the steps which produced the heatmap in Figure 1A and volcano plot in Figure 2B, we use the read counts file available from the GEO database. We also compare plots produced using our filtered DEG list versus the filtered DEG list provided in supplementary appendix 1 by the authors.
+
+Part II: Analysis of read counts data to identify differentially expressed genes (DEG) between early-onset and late-onset groups
+
+To replicate the steps which produced the heatmap in Figure 1A and volcano plot in Figure 2B, we use the read counts file available from the GEO database that had been generated from all the fastq files. We also compared plots produced using our filtered DEG list versus the filtered DEG list provided in supplementary appendix 1 by the authors.
 
 Part II A: Generating a normalized DEG list from the read counts file
 
@@ -254,7 +254,7 @@ counts_data <- counts_data[!rowSums(is.na(counts_data)),] #Remove NA values from
 
 #NOTE: There were duplicate rows for genes labelled "01-Mar" and "02-Mar" in the original data.
 #These seemed to be mislabeled, and were causing issues with downstream steps, so we decided to remove these rows.
-#Ideally, we would delve into why these genes were mislabelled and correctly identify them, but we do not have sufficient information to do that.
+#Ideally, we would find out why these genes were mislabeled and correctly identify them, but we do not have enough information to do that.
 counts_data <- counts_data[counts_data$Gene != "01-Mar", ]
 counts_data <- counts_data[counts_data$Gene != "02-Mar", ]
 
@@ -288,9 +288,6 @@ fit = glmQLFit(dge, design)
 qlf = glmQLFTest(fit, coef=2) 
 topTags(qlf, n=10, adjust.method="BH", sort.by="logFC", p.value=0.01) #Checking output
 
-# To expand on the work of the authors by introducing an appropriate QC step, we made an MA plot:
-plotQLDisp(fit)
-
 # Calculating FDR values for all the P-values using the same method as topTags
 dge_fdr <- as.data.frame(p.adjust(qlf$table$PValue, method = "BH"))
 colnames(dge_fdr) <- c("FDR")
@@ -302,7 +299,7 @@ dge_fc[,2] <- dge_fc[,2] * -1 # The paper's supplementary table had fold-change 
 
 # Filter DGE data based on following criteria: 
 # p < 0.01, |log2FC| >1, logCPM > 1
-dge_fc_filtered <- dge_fc[which(dge_fc$PValue < 0.01),]# try to instead filter by FDR, after I get same results
+dge_fc_filtered <- dge_fc[which(dge_fc$PValue < 0.01),]
 dge_fc_filtered <- dge_fc_filtered[which(dge_fc_filtered$logCPM > 1),]
 dge_fc_filtered <- dge_fc_filtered[which(abs(dge_fc_filtered$logFC) > 1),]
 #This narrowed the list of candidate genes from 33119 to 142
@@ -315,11 +312,6 @@ paper_dge_fc <- read.csv('cam45675-sup-0001-appendixs1.csv')
 ```
 
 ```{r}
-#Todo: improve the MA plot
-```
-
-
-```{r}
 paper_dge_fc # Authors' filtered DEG list
 ```
 
@@ -328,9 +320,13 @@ paper_dge_fc # Authors' filtered DEG list
 dge_fc_filtered #Our filtered DEG list.
 ```
 
-It appears that most genes match between our list and the authors' list, and the values in the corresponding columns are usually close. A notable difference is that the top 4 logFC candidates in our table (SFTA3, SFTPB, SFRP1, SLC5A8) and the bottom 4 (LYPD2, TSIX, ITLN2, and LOC102723453) are not in the authors' table. Some of these have very large |logFC| values (e.g. SFTA3: 6.796528, LYPD3: -8.039594). These 8 genes met the filtering criteria, so we think they should have been included in the analysis. Furthermore, these genes have very low FDR values, which further favors their inclusion. If the authors had other reasons to exclude these genes, we think that they should have mentioned them in the paper. For comparison, we provide heat maps based on both our DEG list and the authors' DEG list. It is worth noting that the MA plot indicates very uneven dispersion in the counts data.
+It appears that many genes match between our list and the authors' list, and the values in the corresponding columns are usually close. A notable difference is that the top 4 logFC candidates in our table (SFTA3, SFTPB, SFRP1, SLC5A8) and the bottom 4 (LYPD2, TSIX, ITLN2, and LOC102723453) are not in the authors' table. Some of these have very large |logFC| values (e.g. SFTA3: 6.796528, LYPD3: -8.039594). These 8 genes met the filtering criteria, so we think they should have been included in the analysis. Furthermore, these genes have very low FDR values, which further favors their inclusion. If the authors had other reasons to exclude these genes, we think that they should have mentioned them in the paper. For comparison, we provide heat maps based on both our DEG list and the authors' DEG list.
 
 Part II B: Generating a heatmap of differentially expressed genes.
+
+Figure 1 in the paper displays a heatmap of DEGs, comparing the early-onset to the late-onset sample groups.
+
+![sequence content](./paper_heatmap.png)
 
 ```{r}
 # Heat map 1: based on our DEG list
@@ -350,34 +346,20 @@ library(ComplexHeatmap)
 library(circlize)
 my_colors <- colorRamp2(c(-4, 0, 4), c("green", "black", "red"))
 
-onset_labels = HeatmapAnnotation(onset = sample_labels_subset$EorL,
-                                 col = list(onset = c("1" = "yellow", "0" = "blue")),
-                                 gp = gpar(col = "black"), show_legend = FALSE)
+#We tried to make column labels to denote whether a sample was from early or late onset group, but ran into issues with how this was displayed.
+#
+# onset_labels = HeatmapAnnotation(onset = sample_labels_subset$EorL,
+#                                  col = list(onset = c("1" = "yellow", "0" = "blue")),
+#                                  gp = gpar(col = "black"), show_legend = FALSE)
 
 heatmap_ourList <- Heatmap(heatmap_data, heatmap_legend_param = list(title = ""), col = my_colors, 
         show_row_dend = FALSE, show_column_dend = FALSE,
-        row_order = rownames(heatmap_data), column_order = sample_labels_subset$X.1,
-        top_annotation = onset_labels)
+        row_order = rownames(heatmap_data), column_order = sample_labels_subset$X.1)
+
 heatmap_ourList
 ```
 
-```{r}
-# Create a data frame for the onset labels
-onset_labels_df <- data.frame(onset = c(rep(0, 49), rep(1, 50)))
-rownames(onset_labels_df) <- sample_labels_subset$X.1
-
-# Create the onset labels annotation object
-onset_labels_anno <- HeatmapAnnotation(
-  onset = onset_labels_df$onset,
-  col = list(onset = c("0" = "blue", "1" = "yellow")),
-  show_legend = TRUE,
-  annotation_width = unit(0.5, "cm")
-)
-```
-
-Note that the "onset" label above the graph is actually incorrect. The first half of the samples are early onset, and the second half are late onset. This can be confirmed by comparing the column names with "sample_labels_subset". The program seems to automatically sort the annotations into 4 groups, and we cannot find out how to change this.
-
-There are some general similarities between our heatmap and the heatmap shown in the paper. It appears that there are differences in expression between the early- and late-onset cohorts. Both our heatmap and the heatmap shown in the paper seem to have higher expression levels visible in the top left and bottom right quadrants, and lower expression in the bottom left and top right quadrants. However, there seem to be some genes in our list with high expression across all samples that overwhelm the signal. To determine whether the issue is with the list of genes we used, we made another heatmap using the DEG list from the authors' appendix table 1.
+We have left the sample names and gene names in the heatmap, so that it can be verified that the samples are sorted into early and late-onset groups (left half: early-onset, right half: late-onset), and the gene list matches our gene list. It appears that in both our heatmap and the heatmap shown in the paper, there are differences in expression between the early- and late-onset cohorts. Both heatmaps have higher expression levels visible in the top left and bottom right quadrants, and lower expression in the bottom left and top right quadrants. This gives some evidence that we correctly selected genes that were differentially expressed between early-onset and late-onset groups. However, there are some genes in our list with high expression across all samples that overwhelm the signal, and there appear to be no genes with z-scores below -2 in our heatmap. To determine whether the issue is with the list of genes we used, we made another heatmap using the DEG list from the authors' appendix table 1.
 
 
 ```{r}
@@ -398,20 +380,6 @@ library(ComplexHeatmap)
 library(circlize)
 my_colors <- colorRamp2(c(-4, 0, 4), c("green", "black", "red"))
 
-
-# We attempted to make column labels, but 
-#
-# onset_labels = HeatmapAnnotation(df = as.data.frame(c(rep(0, 49), rep(1, 50))), 
-#                                  gp = gpar(col = "black"), show_legend = FALSE, 
-#                                  which = "column")
-
-
-#
-# EorL <- c(rep(0, 49), rep(1, 50))
-# onset_labels = HeatmapAnnotation(onset = EorL,
-#                                  col = list(onset = c("0" = "yellow", "1" = "blue")),
-#                                  gp = gpar(col = "black"), show_legend = FALSE)
-
 heatmap_authorList <- Heatmap(heatmap_authorList_data, heatmap_legend_param = list(title = ""), col = my_colors, 
                      show_row_dend = FALSE, show_column_dend = FALSE,
                      row_order = rownames(heatmap_authorList_data), column_order = sample_labels_subset$X.1,
@@ -422,7 +390,7 @@ heatmap_authorList
 
 This heat map also has some visible differences between the early onset and late onset groups, but it has the same issue with globally overexpressed genes as the first heatmap.
 
-This suggests that the difference between our heatmap and the paper's likely results mainly from our normalization steps, rather than our gene list, since the gene list for the second heatmap was the same as the one used in the paper. The paper's description of the normalization method is brief (for example, z-score normalization was not mentioned), so the order in which steps were carried out is unclear. It is worth noting that we have sorted the samples by cohort, but we do not know whether they are sorted within each cohort in the same way as in the paper, so this could contribute to differences in appearance between the paper's heatmap and ours.
+This suggests that the difference between our heatmap and the paper's likely results mainly from our normalization steps, rather than our gene list, since the gene list for the second heatmap was the same as the one used in the paper. It is worth noting that we have sorted the samples by cohort (early-onset and late-onset), but we do not know whether they are sorted within each cohort in the same way as in the paper, so this could contribute to differences in appearance between the paper's heatmap and ours. The paper's description of the normalization method is brief (for example, z-score normalization was not mentioned), so the order in which steps were carried out is unclear. 
 
 Possible further approaches to replicate the paper's results might include:
    - Calculating the z scores before calculating cpm, or only calculating z scores without cpm.
@@ -431,9 +399,14 @@ Possible further approaches to replicate the paper's results might include:
    - Filtering based on false discovery rate (FDR) instead of P-value and logFC.
    - Contacting the authors to inquire about their normalization steps
 
-In the interest of time, we will not experiment with altering the order of these steps, but the above would be a worthwhile approach.
+In the interest of time, we will not experiment with altering the order of these steps, but the above could be a good approach.
+
 
 Part IIC: Generating a volcano plot from the DEG list
+
+The authors made a volcano plot of -log10 P-value versus Log2FC.These volcano plots display the genes that meet the authors' defined threshold values for |log2FC| and -log10 P-value in the top right and left squares. 
+
+![sequence content](./paper_volcano.png)
 
 ```{r}
 #Volcano plot based on our unfiltered DGE gene list:
@@ -483,11 +456,13 @@ volcano_authorList_filtered <- EnhancedVolcano(paper_dge_fc,
 volcano_authorList_filtered
 ```
 
-These volcano plots display the genes that meet the authors' defined threshold values for |log2FC| and -log10 P-value in the top right and left squares. Since the filtered volcano plots only include the genes that already met the threshold values, they only show genes in these squares. The authors only included their filtered gene list in the appendix, so we cannot compare their unfiltered list to ours. The gene NTS appears to be at or near the same position in all 3 volcano plots as well as the Figure 2 plot shown in the paper, which is supporting evidence that our analysis replicated correctly. A zoomed-in image of the volcano_authorList_filtered plot shows that the positions of DKK4, CCL19, and PRSS33 match between this plot and the Figure 2 plot in the paper, which further supports that our replication of Figure 2 is successful. Other genes are not labelled in the paper but appear in the same positions between the 3 plots (e.g. DHRS1, CCDC88B, CDK12). When comparing our filtered list to the authors' filtered list, it is apparent that ours includes some genes with much higher |log2FC| and -log10P values than those identified by the authors (as discussed earlier, e.g. the top 4 and bottom 4 log2FC genes). It remains unclear why the authors excluded these genes from the analysis given their low FDR values, and this bears further investigation.
+Since the filtered volcano plots only include the genes that already met the threshold values, they only show genes in the top right and left squares. The authors only included their filtered gene list in the appendix, so we cannot compare their unfiltered list to ours.
+
+Several genes appear to match in position between these four plots, including NTS, DKK4, CCL19, and PRSS33, which gives evidence that our replication of Figure 2 is successful. Other genes are not labelled in the paper but appear in the same positions between the 3 plots (e.g. DHRS1, CCDC88B, CDK12). Our filtered volcano displays some genes with much higher |log2FC| and -log10P values than those identified by the authors (as discussed earlier, e.g. the top 4 and bottom 4 log2FC genes). It remains unclear why the authors excluded these genes from the analysis given their low FDR values, and this bears further investigation.
 
 Conclusion:
 
-[[comment on pre-processing ]]. A large number of genes matched between our filtered DEG list and the authors' list, and the values obtained for logP, log2FC, and FDR were generally very close. Notably, the 8 most differentially expressed genes we found were not present in the authors' list. Since these genes also have very low FDR values, we conclude that they bear investigation. Our heatmap displayed visible differences between early and late onset colorectal cancer groups, but these differences were less obvious than in the original paper, and we had issues with globally highly expressed genes. Comparison with a heatmap that used the authors' DEG list led us to conclude that the differences in our heatmap were more related to the normalization steps than the DEG list. We proposed further steps that could be taken to rectify our normalization. Comparison of the three volcano plots that we generated gave good evidence that we properly replicated the authors' methods for producing a DEG list, and further demonstrates that the highly differentially expressed genes on our list that were not in the authors' list warrant further investigation. Overall, we were able to successfully repeat the steps of the authors' analysis using the data they had made publicly available on GEO, and our results were comparable to theirs, though there are some interesting discrepancies that could benefit from further inquiry.
+Our pre-processing steps generated read counts from fastq files provided on the GEO database. When we performed differential gene expression analysis using the counts file provided on the GEO database, a large number of genes matched between our filtered DEG list and the authors' list, and the values obtained for logP, log2FC, and FDR were generally very close. Notably, the 8 most differentially expressed genes we found were not present in the authors' list. Since these genes also have very low FDR values, we conclude that they bear further investigation. Our heatmap displayed visible differences between early and late onset colorectal cancer groups, but these differences were less obvious than in the original paper, and we had issues with globally highly expressed genes. Comparison with a heatmap that used the authors' DEG list led us to conclude that the differences in our heatmap were more related to the normalization steps than the DEG list. We proposed further steps that could be taken to rectify our normalization. Comparison of the three volcano plots that we generated gave good evidence that we properly replicated the authors' methods for producing a DEG list, and further demonstrates that the highly differentially expressed genes on our list that were not in the authors' list warrant further investigation. Overall, we were able to successfully repeat the steps of the authors' analysis using the data they had made publicly available on GEO, and our results were comparable to theirs, though there are some interesting discrepancies that could benefit from further analysis.
 
 Authors: Liam Brockley (26182865) and Sakshi Goyal (72365547)
 
