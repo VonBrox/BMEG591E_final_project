@@ -5,7 +5,7 @@ date: "2023-04-05"
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, include = FALSE)
+knitr::opts_chunk$set(echo = TRUE)
 ```
 
 Introduction:
@@ -129,7 +129,6 @@ The output of this script is a read counts file with 28397 rows:
 
 ```{r}
 EarlyOnset_SRR21523117_counts <- read.csv('EarlyOnset_SRR21523117.counts.csv')
-head(EarlyOnset_SRR21523117_counts)
 
 ```
 
@@ -231,7 +230,9 @@ To replicate the steps which produced the heatmap in Figure 1A and volcano plot 
 
 Part II A: Generating a normalized DEG list from the read counts file
 
-```{r}
+The code in section IIA was not allowing the Rmd file to be knit into a pdf file due to a unicode error, so we wrote "include=false" in the code chunk. The code we used to generate the DGE list is visible in the Rmd file but not in the knitted .pdf file.
+
+```{r, include = FALSE}
 library(readr)
 library(dplyr)
 library(tidyverse)
@@ -301,12 +302,12 @@ paper_dge_fc <- read.csv('cam45675-sup-0001-appendixs1.csv')
 ```
 
 ```{r}
-paper_dge_fc # Authors' filtered DEG list
+head(paper_dge_fc) # Authors' filtered DEG list
 ```
 
 
 ```{r}
-dge_fc_filtered #Our filtered DEG list.
+head(dge_fc_filtered) #Our filtered DEG list.
 ```
 
 It appears that many genes match between our list and the authors' list, and the values in the corresponding columns are usually close. A notable difference is that the top 4 logFC candidates in our table (SFTA3, SFTPB, SFRP1, SLC5A8) and the bottom 4 (LYPD2, TSIX, ITLN2, and LOC102723453) are not in the authors' table. Some of these have very large |logFC| values (e.g. SFTA3: 6.796528, LYPD3: -8.039594). These 8 genes met the filtering criteria, so we think they should have been included in the analysis. Furthermore, these genes have very low FDR values, which further favors their inclusion. If the authors had other reasons to exclude these genes, we think that they should have mentioned them in the paper. For comparison, we provide heat maps based on both our DEG list and the authors' DEG list.
@@ -347,7 +348,7 @@ heatmap_ourList <- Heatmap(heatmap_data, heatmap_legend_param = list(title = "")
 
 heatmap_ourList
 ```
-![sequence content](./heatmap_ourlist.png)
+
 
 In this heatmap, we have plotted the z-scores (as discussed) for the cpm gene expression values of our top logFC ranked genes for all patient samples. We have sorted the patient samples into early-onset (left) and late-onset (right).We have left the sample names and gene names in the heatmap, so that it can be verified that the samples are sorted into early and late-onset groups (left half: early-onset, right half: late-onset), and the gene list matches our gene list. 
 
@@ -379,7 +380,7 @@ heatmap_authorList <- Heatmap(heatmap_authorList_data, heatmap_legend_param = li
                      cluster_columns = FALSE)
 heatmap_authorList
 ```
-![sequence content](./heatmap_authorlist.png)
+
 In general, this heatmap looks quite similar to the heatmap generated from genes in out DEG list. This heat map also has some visible differences between the early onset and late onset groups, but it has the same issue with globally overexpressed genes as the first heatmap.
 
 This suggests that the difference between our heatmap and the paper's likely results mainly from our normalization steps, rather than our gene list, since the gene list for the second heatmap was the same as the one used in the paper. It is worth noting that we have sorted the samples by cohort (early-onset and late-onset), but we do not know whether they are sorted within each cohort in the same way as in the paper, so this could contribute to differences in appearance between the paper's heatmap and ours. The paper's description of the normalization method is brief (for example, z-score normalization was not mentioned), so the order in which steps were carried out is unclear. 
@@ -416,7 +417,7 @@ volcano_ourList_unfiltered <- EnhancedVolcano(dge_fc,
 volcano_ourList_unfiltered
 
 ```
-![sequence content](./volcano_ourlist_unfiltered.png)
+
 ```{r}
 #Volcano plot based on our filtered DGE gene list:
 library(EnhancedVolcano)
@@ -433,7 +434,6 @@ volcano_ourList_filtered <- EnhancedVolcano(dge_fc_filtered,
 volcano_ourList_filtered
 ```
 
-![sequence content](./volcano_ourlist_filtered.png)
 
 ```{r}
 # Volcano plot based on the authors' filtered DGE gene list:
@@ -450,7 +450,6 @@ volcano_authorList_filtered <- EnhancedVolcano(paper_dge_fc,
                 caption = "")
 volcano_authorList_filtered
 ```
-![sequence content](./volcano_authorlist_filtered.png)
 
 Since the filtered volcano plots only include the genes that already met the threshold values, they only show genes in the top right and left squares. The authors only included their filtered gene list in the appendix, so we cannot compare their unfiltered list to ours.
 
